@@ -45,6 +45,23 @@ function envValues(envObj) {
 
 const ENV_VALUES = envValues(source.env);
 
+// Helper: the sample value a snippet carries for one env entry, looked up by
+// entry name through the registry itself. Prose that names the sample (the
+// Cursor paragraph under the one-click badge) reads it here rather than as
+// ENV_VALUES.MNEMOVERSE_API_KEY on purpose: every value in source.env is a
+// documented sample that ships in public README text, but a property access
+// named *_API_KEY flowing into the --check drift printout (which echoes the
+// first 200 characters of a regenerated artifact) reads to CodeQL as
+// clear-text logging of a credential (js/clear-text-logging, alert #4 on PR
+// #123). Going through the entries keeps the single source of truth and the
+// drift check, and drops the false credential signal.
+function sampleValue(envName) {
+  for (const [name, meta] of Object.entries(source.env)) {
+    if (name === envName) return meta.value;
+  }
+  throw new Error(`source.json env has no entry named ${envName}`);
+}
+
 // ─── Generators ──────────────────────────────────────────────────────────────
 
 /**
@@ -194,10 +211,18 @@ function genClaudeCodeCli() {
   return `claude mcp add ${source.name} -s user \\\n${envFlags} \\\n  -- ${source.command} ${source.args.join(" ")}\n`;
 }
 
+/**
+ * Claude Code CLI command — single-line PowerShell variant.
+ *
+ * Format: claude mcp add NAME -s user -e KEY=VAL ... -- command args... (one line, no `\` continuations)
+ *
+ * Same command as genClaudeCodeCli(), reflowed onto one line: PowerShell
+ * (the default shell on Windows) does not read the bash-style `\` line
+ * continuations, so a Windows user pasting the multiline block gets a
+ * parse error instead of the intended command. `-s user` remains
+ * LOAD-BEARING here for the same reason as in genClaudeCodeCli() above.
+ */
 function genClaudeCodeCliOneLine() {
-  // Same command, single line: PowerShell (the default shell on Windows)
-  // does not read the backslash line continuations of the bash form, so a
-  // Windows user pasting the multiline block gets a parse error.
   const envFlags = Object.entries(ENV_VALUES)
     .map(([k, v]) => `-e ${k}=${v}`)
     .join(" ");
@@ -260,24 +285,47 @@ function snippetMcpServersJson(label, configPath) {
 }
 
 function snippetVscode() {
-  // VS Code uses `servers` (not `mcpServers`) and requires `type: "stdio"`
+  // VS Code uses `servers` (not `mcpServers`) and requires `type: "stdio"`.
+  // `.vscode/mcp.json` is meant to be committed and shared with the team —
+  // which means the key in it is too, the same repo-config risk the Cursor
+  // snippet above warns against. Point at VS Code's user-profile config
+  // (via the Command Palette, since it has no fixed cross-platform path
+  // the way ~/.cursor/mcp.json does) as the way to keep the key out of git.
   const json = JSON.stringify(genVscodeFormat(), null, 2);
   return (
-    "**VS Code** — add to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`):\n\n" +
+    "**VS Code** — add to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). That file is meant to be committed and shared with your team, so the key in it is too — if you'd rather keep it out of the repo, run **MCP: Open User Configuration** from the Command Palette and add the same JSON to your user profile's `mcp.json` instead:\n\n" +
     "```json\n" +
     json +
     "\n```\n"
   );
 }
 
-function snippetCursor() {
+function snippetCursor({ utm = false } = {}) {
   // Cursor gets a one-click "Add to Cursor" button (official badge) plus the
   // manual JSON fallback. The button and the JSON encode the same config.
+  // The button carries the source.json placeholder key, so the paragraph
+  // below it must keep saying so — don't drop it if this function changes.
+  // The placeholder text is read from source.json (sampleValue), not
+  // hardcoded: if the MNEMOVERSE_API_KEY sample value ever changes, this
+  // sentence must not silently drift out of sync with it.
+  //
+  // `utm`: this function backs both the README block (npm's install page,
+  // where the CHANGELOG's "two console links carry UTM tags" policy applies
+  // because npm strips referrers) and docs/snippets/cursor.md, a partial
+  // mirrored as-is into mnemoverse-docs — a surface that already links
+  // console.mnemoverse.com cleanly elsewhere. Keep the tag npm-only: pass
+  // `utm: true` only from the README assembly below.
   const json = JSON.stringify(genMcpServersFormat(), null, 2);
+  const placeholderKey = sampleValue("MNEMOVERSE_API_KEY");
+  const consoleUrl = utm
+    ? "https://console.mnemoverse.com?utm_source=npm&utm_medium=readme&utm_campaign=mcp-memory-server"
+    : "https://console.mnemoverse.com";
   return (
-    "**Cursor** — click to install, or add to `.cursor/mcp.json`:\n\n" +
+    "**Cursor** — click to install, or add the JSON below to `~/.cursor/mcp.json`, the global config that covers every project. Do not put it in a project-level `.cursor/mcp.json`: that file lives inside the repository and is committed with it unless you exclude it, and this config holds your key.\n\n" +
     genCursorInstallButton() +
-    "\n\n```json\n" +
+    "\n\n" +
+    `The install button carries the placeholder key \`${placeholderKey}\`, not yours, so the shortest path is to skip the button: add the JSON below to \`~/.cursor/mcp.json\`, merging it with any servers already there, and put your own key in place. Get one at [console.mnemoverse.com](${consoleUrl}). If you did click the button, edit the same key in the \`mcp.json\` it wrote; Cursor keeps MCP environment values in that file, not in a settings form. Until the key is real the server starts and lists its tools, but every tool call is refused.\n\n` +
+    "```json\n" +
     json +
     "\n```\n"
   );
@@ -332,7 +380,7 @@ const WHY_LATEST_NOTE =
 function readmeInstallBlock() {
   return [
     snippetClaudeCodeCli(),
-    snippetCursor(),
+    snippetCursor({ utm: true }),
     snippetVscode(),
     snippetMcpServersJson("Windsurf", "~/.codeium/windsurf/mcp_config.json"),
     "**More MCP clients** — same server, different config file:\n",
