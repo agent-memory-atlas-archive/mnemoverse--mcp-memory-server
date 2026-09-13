@@ -22,6 +22,16 @@ no stored state, but it is not free: reads spend rate budget even where they
 are quota-exempt, so an undisclosed probe is a cost the caller pays without
 being told. 0.8.1 adds such probes; the disclosure is in its entry below.
 
+**What a MINOR may do to the tool surface** (stated 2026-09-13, after a reader
+asked to diff a saved `tools/list` against a live one): add tools and add
+annotation fields, each with its own line here. It may not remove or rename a
+tool, and it may not drop or silently flip a declared annotation field. A
+removal or a rename is announced one MINOR ahead (the tool stays and its
+description says `deprecated since x.y, removed in x.z`) and lands only in the
+announced version. `tools/list` is therefore frozen per released version, and
+two servers of one version that differ are a bug. The README section "Tool
+surface stability" is the reader-facing statement of the same rule.
+
 A patch may NOT change SHAPE or ROUTING: no tool added, removed or renamed; no
 parameter added, removed, renamed, retyped, or made optional or required; no
 annotation flipped; and nothing that moves data — a domain normalisation, a
