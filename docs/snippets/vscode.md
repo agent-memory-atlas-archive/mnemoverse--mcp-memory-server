@@ -1,9 +1,17 @@
 <!-- AUTO-GENERATED from src/configs/source.json. Run `npm run generate:configs`. Do not edit by hand. -->
 
-**VS Code** — add to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). That file is meant to be committed and shared with your team, so the key in it is too — if you'd rather keep it out of the repo, run **MCP: Open User Configuration** from the Command Palette and add the same JSON to your user profile's `mcp.json` instead:
+**VS Code** — the [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) signs in through the browser and needs no key; that's the default path. To wire the MCP server directly instead, add this to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). Never put a literal `mk_live_` key in that file — it's committed with the repo. The `inputs` entry below prompts for the key instead: VS Code masks what you type and stores it in its own secret storage, not in the file:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "mnemoverse-api-key",
+      "description": "Mnemoverse API key (starts with mk_live_). Leave blank to skip — get one free at https://console.mnemoverse.com",
+      "password": true
+    }
+  ],
   "servers": {
     "mnemoverse": {
       "type": "stdio",
@@ -13,7 +21,7 @@
         "@mnemoverse/mcp-memory-server@latest"
       ],
       "env": {
-        "MNEMOVERSE_API_KEY": "mk_live_YOUR_KEY",
+        "MNEMOVERSE_API_KEY": "${input:mnemoverse-api-key}",
         "MNEMOVERSE_API_URL": "https://core.mnemoverse.com/api/v1"
       }
     }
