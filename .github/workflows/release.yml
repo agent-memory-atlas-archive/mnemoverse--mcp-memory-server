@@ -353,10 +353,23 @@ jobs:
     # job exists to announce: a tag that nothing published. So both count.
     if: failure() || cancelled()
     runs-on: ubuntu-latest
-    # One alarm at a time. Two failures landing together would both miss the
-    # dedupe lookup and both take the create path — the exact duplication the
-    # lookup exists to prevent. Queue instead of cancelling: a dropped second
-    # run is a dropped alarm.
+    # Serialize the alarm. Two failures landing together would both miss the
+    # dedupe lookup and both take the create path, the exact duplication the
+    # lookup exists to prevent.
+    #
+    # What `cancel-in-progress: false` actually buys, stated exactly rather than
+    # optimistically: Actions holds ONE run per group plus at most ONE waiting
+    # behind it. A third arrival does not join a queue, it REPLACES the waiting
+    # run, and the replaced run is cancelled. So this is mutual exclusion, not
+    # guaranteed delivery, and an earlier version of this comment promised a
+    # queue that Actions does not offer.
+    #
+    # Accepted, because of what a displaced run would have carried. The run that
+    # holds the group opens or adopts the tracking issue; every run after it only
+    # adds a heartbeat comment naming a failure that issue already reports. A
+    # displaced run also still leaves its own red run in the Actions tab. Losing
+    # a duplicate heartbeat is the cheaper side of this trade than racing two
+    # creates and splitting the alarm across two issues.
     concurrency:
       group: release-alarm-${{ github.workflow }}
       cancel-in-progress: false
@@ -387,15 +400,20 @@ jobs:
         A 404 on `PUT` for a package that plainly exists is **not** "package not found".
         npm answers 404 rather than 401 so that it does not disclose whether a private
         package exists. So read it as an **authorization** problem and check, cheapest
-        first: is `NPM_TOKEN` present and unrevoked; does it grant publish on the
-        `@mnemoverse` scope; is the account behind it still in the npm org; and was
-        publish-time 2FA turned on for the package.
+        first: does `NPM_TOKEN` resolve to anything at all in this job; is it unexpired;
+        is it unrevoked; does it grant publish on the `@mnemoverse` scope; is the account
+        behind it still in the npm org; and was publish-time 2FA turned on for the package.
 
-        One branch is worth ranking DOWN. This file's own setup section calls for a
-        classic **Automation** token, and those do not expire — so if setup was followed,
-        plain expiry is the least likely cause, and a revoked token or one minted by the
-        wrong account fits the same error more cheaply. Confirm which kind is actually in
-        the secret before spending time on the expiry theory.
+        Two notes on the first two of those, because both have a repo-specific answer.
+        The secret is recommended in this file as an **environment** secret on the
+        `release` environment rather than a repository secret, so a renamed or deleted
+        environment leaves `secrets.NPM_TOKEN` empty and produces this same 404 with
+        nothing actually revoked. And the setup section at the top of this file mints the
+        token on npm's **granular access tokens** page; tokens from that page carry an
+        expiry date, so expiry is a live branch here. An earlier draft of this text ranked
+        expiry down, on the grounds that the setup section called for a non-expiring
+        classic token. It does not: the URL it gives is the granular-access-tokens page,
+        and "Automation" there is a token *type* on that page, not the classic token.
 
         **After fixing the cause**, re-run this workflow from the tag. The publish legs
         run in the order npm → Official MCP Registry → GitHub release, and each is
@@ -414,25 +432,36 @@ jobs:
         with:
           script: |
             const MARKER = 'Release did not complete';
-            try {
-              // `workflow_dispatch.inputs.tag` is `type: string`, which GitHub does not
-              // validate at all, and the REST API will accept a multi-line value. It
-              // reaches two rendered sinks — the issue title and the body heading — so
-              // an unchecked value could forge markdown under this bot's name, hide the
-              // real advisory inside an unclosed HTML comment, or fire an @org/team
-              // mention. That needs write access, so it buys attribution rather than
-              // privilege; it is still not this job's to hand out.
-              //
-              // Refuse anything that is not a plausible tag rather than trying to escape
-              // it. A rejected value still produces a usable alarm — the run link and the
-              // triage body do not depend on it.
-              const rawTag = process.env.TAG || '';
-              const tag = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(rawTag)
-                ? rawTag
-                : '(tag name refused as unsafe)';
-              const heading = 'Release did not complete for **' + tag + '**.';
-              const runUrl = process.env.RUN_URL;
 
+            // `workflow_dispatch.inputs.tag` is `type: string`, which GitHub does not
+            // validate at all, and the REST API will accept a multi-line value. It
+            // reaches two rendered sinks — the issue title and the body heading — so
+            // an unchecked value could forge markdown under this bot's name, hide the
+            // real advisory inside an unclosed HTML comment, or fire an @org/team
+            // mention. That needs write access, so it buys attribution rather than
+            // privilege; it is still not this job's to hand out.
+            //
+            // Refuse anything that is not a plausible tag rather than trying to escape
+            // it. A rejected value still produces a usable alarm — the run link and the
+            // triage body do not depend on it.
+            const rawTag = process.env.TAG || '';
+            const tag = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(rawTag)
+              ? rawTag
+              : '(tag name refused as unsafe)';
+            const heading = 'Release did not complete for **' + tag + '**.';
+            const runUrl = process.env.RUN_URL;
+
+            // Render the body ONCE, here, outside the try. Every consumer below uses
+            // this string and only this string. Substituting __HEADING__ inline at the
+            // create() call meant the catch path fell back to the RAW template, so the
+            // last-resort report — the one that runs precisely when the Issues API is
+            // unavailable and the job summary is the only surface left — was the single
+            // report that printed a literal `__HEADING__` and was not valid markdown.
+            // These three lines cannot throw (a regex test and two string ops), so
+            // hoisting them out of the try does not widen what goes unhandled.
+            const body = (process.env.ISSUE_BODY || '').replace('__HEADING__', heading);
+
+            try {
               // Dedupe on the TITLE, never on labels. A label filter silently matches
               // nothing when the label does not exist in this repo (only `bug` does
               // today), which would make this open a fresh issue on every failure —
@@ -489,7 +518,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   title: MARKER + ': ' + tag,
-                  body: process.env.ISSUE_BODY.replace('__HEADING__', heading),
+                  body,
                   labels: ['bug'],
                 });
                 core.notice('Opened issue #' + created.data.number);
@@ -505,7 +534,7 @@ jobs:
                 .addHeading('Tracking issue could not be filed')
                 .addRaw('The GitHub Issues API rejected the write. The report follows so it is not lost.')
                 .addSeparator()
-                .addRaw(process.env.ISSUE_BODY)
+                .addRaw(body)
                 .write();
-              core.setFailed(process.env.ISSUE_BODY);
+              core.setFailed(body);
             }

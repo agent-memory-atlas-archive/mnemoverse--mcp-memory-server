@@ -19,7 +19,19 @@
  * (a lag there is expected, not a drift we caused).
  *
  * Usage: `node scripts/check-release-sync.mjs` (no deps; needs Node 18+ fetch).
- * Exit 0 = all first-party surfaces in sync; exit 1 = drift or unreachable.
+ *
+ * Exit 0 = every first-party surface answered AND matched.
+ * Exit 1 = at least one surface DRIFTED (it answered, with the wrong version) or
+ *          COULD NOT BE CHECKED (it did not answer at all).
+ *
+ * Those two outcomes are counted and reported separately, and they must stay
+ * separate. A timeout against npm is not evidence that a release half-landed;
+ * it is evidence that nothing is known about npm this run. Folding it into
+ * "drift" produced an alarm claiming a partial release on the strength of a
+ * network blip, and sent a responder into release recovery for it. Both are
+ * still red, because a surface nobody could read is a surface nobody verified,
+ * and a green run that verified nothing is the malfunction this check exists to
+ * prevent. What changed is what the red run CLAIMS.
  */
 
 import { readFileSync } from "node:fs";
@@ -105,17 +117,22 @@ async function main() {
     ["GitHub release", checkGithubRelease],
   ];
 
-  let drift = false;
+  // Two distinct outcomes, never merged into one boolean. See the header.
+  const drifted = [];
+  const unchecked = [];
   for (const [name, fn] of firstParty) {
     try {
       const { version, extra } = await fn();
       const ok = version === EXPECTED && extra !== "remote MISSING";
-      if (!ok) drift = true;
+      if (!ok) drifted.push(name);
       const status = version === EXPECTED ? (extra === "remote MISSING" ? "✗ remote missing" : "✓") : `✗ DRIFT (have v${version || "?"})`;
       console.log(line(name, status, version, extra && extra !== "remote MISSING" ? extra : ""));
     } catch (err) {
-      drift = true;
-      console.log(line(name, `✗ unreachable: ${err.message}`, null));
+      // NOT drift. A timeout, a 5xx or a rate limit means this surface did not
+      // answer, so the version it serves is UNKNOWN. Recording that as drift
+      // asserted a half-landed release the run had no evidence for.
+      unchecked.push(name);
+      console.log(line(name, `? could not be checked: ${err.message}`, null));
     }
   }
 
@@ -123,8 +140,13 @@ async function main() {
     "\n  (note) downstream surfaces — PulseMCP / Glama / VS Code gallery — auto-ingest from the registry on their own schedule; not gated here.",
   );
 
-  if (drift) {
-    console.error(`\nDRIFT: at least one first-party surface is not tracking v${EXPECTED}. Investigate the release pipeline (release.yml).`);
+  if (drifted.length > 0) {
+    console.error(`\nDRIFT: ${drifted.join(", ")} answered, but not with v${EXPECTED} (or the registry entry has no remote). A release half-landed. Investigate the release pipeline (release.yml).`);
+  }
+  if (unchecked.length > 0) {
+    console.error(`\nCOULD NOT BE CHECKED: ${unchecked.join(", ")} did not answer this run, so the version served there is unknown. This is NOT drift and is not by itself evidence of a failed release. Re-run, or let tomorrow's scheduled run decide, before touching the release pipeline.`);
+  }
+  if (drifted.length > 0 || unchecked.length > 0) {
     process.exit(1);
   }
   console.log(`\nAll first-party surfaces in sync at v${EXPECTED}.`);
