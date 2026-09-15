@@ -415,10 +415,15 @@ jobs:
         classic token. It does not: the URL it gives is the granular-access-tokens page,
         and "Automation" there is a token *type* on that page, not the classic token.
 
-        **After fixing the cause**, re-run this workflow from the tag. The publish legs
-        run in the order npm → Official MCP Registry → GitHub release, and each is
-        skipped once an earlier one fails, so a partial release means the later surfaces
-        were never attempted at all.
+        **After fixing the cause**, look at which step failed before touching anything.
+        The publish legs run in the order npm → Official MCP Registry → GitHub release,
+        and each is skipped once an earlier one fails, so a partial release means the
+        later surfaces were never attempted at all. If `Publish to npm` never succeeded,
+        re-run this workflow from the tag. If npm already carries this version (a later
+        leg failed), a re-run stops at `npm publish` with a 403 because the version
+        exists; complete the remaining legs by hand (registry publish, GitHub release,
+        the docs ping) or cut a patch release, as CONTRIBUTING.md describes under
+        "recovering a half-landed release".
 
         `release-sync check` (daily, 07:00 UTC) is what verifies the recovery: it compares
         every first-party surface against `package.json#version` and stays red until they
