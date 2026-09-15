@@ -45,6 +45,23 @@ function envValues(envObj) {
 
 const ENV_VALUES = envValues(source.env);
 
+// Helper: the sample value a snippet carries for one env entry, looked up by
+// entry name through the registry itself. Prose that names the sample (the
+// Cursor paragraph under the one-click badge) reads it here rather than as
+// ENV_VALUES.MNEMOVERSE_API_KEY on purpose: every value in source.env is a
+// documented sample that ships in public README text, but a property access
+// named *_API_KEY flowing into the --check drift printout (which echoes the
+// first 200 characters of a regenerated artifact) reads to CodeQL as
+// clear-text logging of a credential (js/clear-text-logging, alert #4 on PR
+// #123). Going through the entries keeps the single source of truth and the
+// drift check, and drops the false credential signal.
+function sampleValue(envName) {
+  for (const [name, meta] of Object.entries(source.env)) {
+    if (name === envName) return meta.value;
+  }
+  throw new Error(`source.json env has no entry named ${envName}`);
+}
+
 // ─── Generators ──────────────────────────────────────────────────────────────
 
 /**
@@ -63,16 +80,60 @@ function genMcpServersFormat() {
 }
 
 /**
- * VS Code (Copilot Chat) format — uses `servers` key (not `mcpServers`).
+ * VS Code `inputs` id for one source.env entry: lowercase, underscores to
+ * dashes (MNEMOVERSE_API_KEY → mnemoverse-api-key), so it reads as the
+ * `${input:mnemoverse-api-key}` reference VS Code substitutes at connect time.
+ */
+function vscodeInputId(envName) {
+  return envName.toLowerCase().replace(/_/g, "-");
+}
+
+/**
+ * `.vscode/mcp.json` is committed with the repo like any other project file,
+ * so a literal secret in its `env` block ships to every collaborator's git
+ * history. VS Code's own docs warn against exactly this and document the fix:
+ * an `inputs` entry with `password: true` prompts for the value once and
+ * VS Code stores it in its own secret storage, substituting
+ * `${input:<id>}` at connect time — the value itself never lands in the file.
+ * (docs.md source: https://code.visualstudio.com/docs/agents/reference/mcp-configuration#_input-variables-for-sensitive-data,
+ * verified 2026-09-14.) Only entries marked `secret: true` in source.json get
+ * an input; MNEMOVERSE_API_URL is not a secret and stays a literal default.
+ */
+function genVscodeInputs() {
+  return Object.entries(source.env)
+    .filter(([, meta]) => meta.secret)
+    .map(([key]) => ({
+      type: "promptString",
+      id: vscodeInputId(key),
+      description:
+        "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
+      password: true,
+    }));
+}
+
+function genVscodeEnv() {
+  const result = {};
+  for (const [key, meta] of Object.entries(source.env)) {
+    result[key] = meta.secret ? `\${input:${vscodeInputId(key)}}` : meta.value;
+  }
+  return result;
+}
+
+/**
+ * VS Code (Copilot Chat) format — uses `servers` key (not `mcpServers`), plus
+ * a top-level `inputs` array so the secret env value is prompted for rather
+ * than written into the file (see genVscodeInputs() above).
  */
 function genVscodeFormat() {
+  const inputs = genVscodeInputs();
   return {
+    ...(inputs.length ? { inputs } : {}),
     servers: {
       [source.name]: {
         type: source.type,
         command: source.command,
         args: source.args,
-        env: ENV_VALUES,
+        env: genVscodeEnv(),
       },
     },
   };
@@ -194,6 +255,24 @@ function genClaudeCodeCli() {
   return `claude mcp add ${source.name} -s user \\\n${envFlags} \\\n  -- ${source.command} ${source.args.join(" ")}\n`;
 }
 
+/**
+ * Claude Code CLI command — single-line PowerShell variant.
+ *
+ * Format: claude mcp add NAME -s user -e KEY=VAL ... -- command args... (one line, no `\` continuations)
+ *
+ * Same command as genClaudeCodeCli(), reflowed onto one line: PowerShell
+ * (the default shell on Windows) does not read the bash-style `\` line
+ * continuations, so a Windows user pasting the multiline block gets a
+ * parse error instead of the intended command. `-s user` remains
+ * LOAD-BEARING here for the same reason as in genClaudeCodeCli() above.
+ */
+function genClaudeCodeCliOneLine() {
+  const envFlags = Object.entries(ENV_VALUES)
+    .map(([k, v]) => `-e ${k}=${v}`)
+    .join(" ");
+  return `claude mcp add ${source.name} -s user ${envFlags} -- ${source.command} ${source.args.join(" ")}\n`;
+}
+
 // NOTE: genSmitheryYaml() was removed on 2026-04-12 after an empirical
 // check showed that Smithery's current CLI (@smithery/cli 4.7.4) entirely
 // ignores the legacy `startCommand` / `configSchema` / `commandFunction`
@@ -223,11 +302,17 @@ const PARTIAL_HEADER =
   "<!-- AUTO-GENERATED from src/configs/source.json. Run `npm run generate:configs`. Do not edit by hand. -->\n\n";
 
 function snippetClaudeCodeCli() {
-  // shell command, multiline with backslash continuations
+  // shell command, multiline with backslash continuations, plus a one-line
+  // variant for Windows: PowerShell rejects the `\` continuations, and the
+  // multiline block pasted there fails with a parse error.
   return (
     "**Claude Code** — add via CLI:\n\n" +
     "```bash\n" +
     genClaudeCodeCli().trim() +
+    "\n```\n\n" +
+    "On Windows (PowerShell), paste the same command as one line — PowerShell does not read the `\\` line continuations:\n\n" +
+    "```powershell\n" +
+    genClaudeCodeCliOneLine().trim() +
     "\n```\n"
   );
 }
@@ -244,24 +329,48 @@ function snippetMcpServersJson(label, configPath) {
 }
 
 function snippetVscode() {
-  // VS Code uses `servers` (not `mcpServers`) and requires `type: "stdio"`
+  // VS Code uses `servers` (not `mcpServers`) and requires `type: "stdio"`.
+  // `.vscode/mcp.json` is a project file and gets committed with the repo
+  // like any other — so a literal key in it ships to every collaborator's
+  // git history. Never advise that; VS Code's own `inputs` mechanism (see
+  // genVscodeInputs() above) exists to avoid exactly this, prompting for the
+  // secret and keeping it out of the file entirely, so the JSON below is
+  // generated with that shape rather than a literal key.
   const json = JSON.stringify(genVscodeFormat(), null, 2);
   return (
-    "**VS Code** — add to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`):\n\n" +
+    "**VS Code** — the [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) signs in through the browser and needs no key; that's the default path. To wire the MCP server directly instead, add this to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). Never put a literal `mk_live_` key in that file — it's committed with the repo. The `inputs` entry below prompts for the key instead: VS Code masks what you type and stores it in its own secret storage, not in the file:\n\n" +
     "```json\n" +
     json +
     "\n```\n"
   );
 }
 
-function snippetCursor() {
+function snippetCursor({ utm = false } = {}) {
   // Cursor gets a one-click "Add to Cursor" button (official badge) plus the
   // manual JSON fallback. The button and the JSON encode the same config.
+  // The button carries the source.json placeholder key, so the paragraph
+  // below it must keep saying so — don't drop it if this function changes.
+  // The placeholder text is read from source.json (sampleValue), not
+  // hardcoded: if the MNEMOVERSE_API_KEY sample value ever changes, this
+  // sentence must not silently drift out of sync with it.
+  //
+  // `utm`: this function backs both the README block (npm's install page,
+  // where the CHANGELOG's "two console links carry UTM tags" policy applies
+  // because npm strips referrers) and docs/snippets/cursor.md, a partial
+  // mirrored as-is into mnemoverse-docs — a surface that already links
+  // console.mnemoverse.com cleanly elsewhere. Keep the tag npm-only: pass
+  // `utm: true` only from the README assembly below.
   const json = JSON.stringify(genMcpServersFormat(), null, 2);
+  const placeholderKey = sampleValue("MNEMOVERSE_API_KEY");
+  const consoleUrl = utm
+    ? "https://console.mnemoverse.com?utm_source=npm&utm_medium=readme&utm_campaign=mcp-memory-server"
+    : "https://console.mnemoverse.com";
   return (
-    "**Cursor** — click to install, or add to `.cursor/mcp.json`:\n\n" +
+    "**Cursor** — click to install, or add the JSON below to `~/.cursor/mcp.json`, the global config that covers every project. Do not put it in a project-level `.cursor/mcp.json`: that file lives inside the repository and is committed with it unless you exclude it, and this config holds your key.\n\n" +
     genCursorInstallButton() +
-    "\n\n```json\n" +
+    "\n\n" +
+    `The install button carries the placeholder key \`${placeholderKey}\`, not yours, so the shortest path is to skip the button: add the JSON below to \`~/.cursor/mcp.json\`, merging it with any servers already there, and put your own key in place. Get one at [console.mnemoverse.com](${consoleUrl}). If you did click the button, edit the same key in the \`mcp.json\` it wrote; Cursor keeps MCP environment values in that file, not in a settings form. Until the key is real the server starts and lists its tools, but every tool call is refused.\n\n` +
+    "```json\n" +
     json +
     "\n```\n"
   );
@@ -310,13 +419,25 @@ const WHY_LATEST_NOTE =
   "> Why `@latest`? Bare `npx @mnemoverse/mcp-memory-server` is cached indefinitely by npm and stops re-checking the registry. The `@latest` suffix forces a metadata lookup on every Claude Code / Cursor / VS Code session start (~100-300ms), so you always pick up new releases.";
 
 /**
- * Build the README install block contents (without the START/END markers).
- * The order here matches the README — change here, README rewrites itself.
+ * The FEATURED clients: the two this README leads with, above any fold.
+ *
+ * They are generated rather than hand-written for one reason. The Cursor entry
+ * carries the install button AND the paragraph explaining that the button
+ * writes the placeholder key `mk_live_YOUR_KEY` rather than yours. A README
+ * that hand-copies the JSON above the fold and leaves the generated entry
+ * below it puts the warning further from the button it warns about, and the
+ * copy drifts from source.json the first time either changes.
  */
-function readmeInstallBlock() {
+function readmeFeaturedBlock() {
+  return [snippetClaudeCodeCli(), snippetCursor({ utm: true })].join("\n");
+}
+
+/**
+ * Every other client, plus the @latest note. A README may fold this region
+ * behind a <details> — see rewriteReadme.
+ */
+function readmeMoreClientsBlock() {
   return [
-    snippetClaudeCodeCli(),
-    snippetCursor(),
     snippetVscode(),
     snippetMcpServersJson("Windsurf", "~/.codeium/windsurf/mcp_config.json"),
     "**More MCP clients** — same server, different config file:\n",
@@ -328,11 +449,31 @@ function readmeInstallBlock() {
   ].join("\n");
 }
 
+/**
+ * Build the README install block contents (without the START/END markers).
+ * The order here matches the README — change here, README rewrites itself.
+ *
+ * A README with only the INSTALL_SNIPPETS markers gets everything in one
+ * region, byte-identical to what this function emitted before the featured
+ * split existed. A README that also carries the MORE_CLIENTS markers gets the
+ * two featured clients here and the rest there.
+ */
+function readmeInstallBlock() {
+  return [readmeFeaturedBlock(), readmeMoreClientsBlock()].join("\n");
+}
+
 // ─── README in-place rewriter ─────────────────────────────────────────────────
 
 const README_START =
   "<!-- INSTALL_SNIPPETS_START — generated from src/configs/source.json. Run `npm run generate:configs` to refresh. Do not edit by hand. -->";
 const README_END = "<!-- INSTALL_SNIPPETS_END -->";
+
+// Optional second region. A README that carries these markers folds every
+// non-featured client behind them (typically inside a <details>); one that
+// does not keeps the single-region layout and this pair is simply absent.
+const MORE_START =
+  "<!-- MORE_CLIENTS_START — generated from src/configs/source.json. Run `npm run generate:configs` to refresh. Do not edit by hand. -->";
+const MORE_END = "<!-- MORE_CLIENTS_END -->";
 
 /**
  * Take current README content + the freshly assembled install block and return
@@ -342,27 +483,70 @@ const README_END = "<!-- INSTALL_SNIPPETS_END -->";
  * out and we don't know where to inject the snippets, so we fail loudly
  * instead of silently doing the wrong thing.
  */
-function rewriteReadme(currentReadme, freshBlock) {
-  const startIdx = currentReadme.indexOf("<!-- INSTALL_SNIPPETS_START");
-  const endIdx = currentReadme.indexOf("<!-- INSTALL_SNIPPETS_END -->");
+function replaceRegion(text, openPrefix, openMarker, closeMarker, fresh) {
+  const startIdx = text.indexOf(openPrefix);
+  const endIdx = text.indexOf(closeMarker);
 
   if (startIdx === -1 || endIdx === -1) {
     throw new Error(
-      "README.md is missing the INSTALL_SNIPPETS_START / INSTALL_SNIPPETS_END markers.\n" +
+      `README.md is missing the ${openPrefix.replace("<!-- ", "")} / ` +
+        `${closeMarker.replace("<!-- ", "").replace(" -->", "")} markers.\n` +
         "These markers tell the generator where to inject the install snippets.\n" +
         "Restore them around the install section and re-run `npm run generate:configs`.",
     );
   }
   if (startIdx >= endIdx) {
     throw new Error(
-      "README.md INSTALL_SNIPPETS_END marker appears before INSTALL_SNIPPETS_START.",
+      `README.md ${closeMarker} appears before ${openPrefix.replace("<!-- ", "")}.`,
     );
   }
 
-  const before = currentReadme.slice(0, startIdx);
-  const after = currentReadme.slice(endIdx + README_END.length);
+  const before = text.slice(0, startIdx);
+  const after = text.slice(endIdx + closeMarker.length);
 
-  return `${before}${README_START}\n\n${freshBlock}\n\n${README_END}${after}`;
+  return `${before}${openMarker}\n\n${fresh}\n\n${closeMarker}${after}`;
+}
+
+function rewriteReadme(currentReadme) {
+  // A README that folds the long tail declares a second region. Without it,
+  // everything goes in the first region and the output is unchanged from
+  // before the featured/more split existed.
+  //
+  // Half a pair is always a mistake, and a silent one: with only the END
+  // marker left behind, `folded` would be false, the second region would never
+  // be rewritten, and a stale block of client snippets would sail through the
+  // --check drift gate because nothing compares it to anything. Fail loudly.
+  const hasMoreStart = currentReadme.includes("<!-- MORE_CLIENTS_START");
+  const hasMoreEnd = currentReadme.includes(MORE_END);
+  if (hasMoreStart !== hasMoreEnd) {
+    throw new Error(
+      "README.md carries only one of the MORE_CLIENTS_START / MORE_CLIENTS_END markers.\n" +
+        `Found START: ${hasMoreStart}, END: ${hasMoreEnd}.\n` +
+        "Either both are present, and the non-featured clients are generated between them,\n" +
+        "or neither is, and every client is generated in the INSTALL_SNIPPETS region.",
+    );
+  }
+  const folded = hasMoreStart;
+
+  let out = replaceRegion(
+    currentReadme,
+    "<!-- INSTALL_SNIPPETS_START",
+    README_START,
+    README_END,
+    folded ? readmeFeaturedBlock() : readmeInstallBlock(),
+  );
+
+  if (folded) {
+    out = replaceRegion(
+      out,
+      "<!-- MORE_CLIENTS_START",
+      MORE_START,
+      MORE_END,
+      readmeMoreClientsBlock(),
+    );
+  }
+
+  return out;
 }
 
 /**
@@ -642,7 +826,7 @@ if (!existsSync(README_PATH)) {
 const currentReadme = readFileSync(README_PATH, "utf8");
 let freshReadme;
 try {
-  freshReadme = rewriteReadme(currentReadme, readmeInstallBlock());
+  freshReadme = rewriteReadme(currentReadme);
 } catch (err) {
   console.error("✗ Cannot rewrite README.md install block:");
   console.error("  " + (err.message || err).split("\n").join("\n  "));
@@ -654,7 +838,10 @@ if (currentReadme === freshReadme) {
 } else if (checkMode) {
   console.error("✗ Drift detected: README.md install block is stale");
   console.error(
-    "  The INSTALL_SNIPPETS_START/END region in README.md does not match",
+    "  A generated region in README.md (INSTALL_SNIPPETS, and MORE_CLIENTS",
+  );
+  console.error(
+    "  if present) does not match",
   );
   console.error(
     "  what the generator would emit from src/configs/source.json.",

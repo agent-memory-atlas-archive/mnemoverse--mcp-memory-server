@@ -1,4 +1,6 @@
-# @mnemoverse/mcp-memory-server
+# Mnemoverse Memory
+
+`@mnemoverse/mcp-memory-server` — the MCP server for the Mnemoverse memory engine.
 
 [![npm version](https://img.shields.io/npm/v/@mnemoverse/mcp-memory-server.svg?color=cb3837&label=npm)](https://www.npmjs.com/package/@mnemoverse/mcp-memory-server)
 [![npm downloads](https://img.shields.io/npm/dm/@mnemoverse/mcp-memory-server.svg?color=blue&label=downloads)](https://www.npmjs.com/package/@mnemoverse/mcp-memory-server)
@@ -7,9 +9,15 @@
 [![Research: SLoD arXiv](https://img.shields.io/badge/Research-arXiv%3A2603.08965-b31b1b)](https://arxiv.org/abs/2603.08965)
 [![Glama quality](https://glama.ai/mcp/servers/mnemoverse/mcp-memory-server/badges/score.svg)](https://glama.ai/mcp/servers/mnemoverse/mcp-memory-server)
 
-Hosted memory for AI agents that learns which facts matter. Feedback re-ranks recall — a Rescorla-Wagner update on the prediction error, not a similarity score — so what helped rises and what misled sinks, with a bounded recency tie-breaker for fresh memories. The engine also ships consolidation (HDBSCAN clustering, with Von Restorff protection so distinctive memories survive compression). One API key works across Claude, Cursor, VS Code, ChatGPT, and any MCP client.
+## What is Mnemoverse Memory?
 
-Memory that persists across sessions, projects, and tools — and improves with use. Hosted, so there's no infrastructure to run, and not locked to a single cloud.
+Mnemoverse is a hosted memory engine for AI agents, reached over the Model Context Protocol. Mnemoverse stores what your agents learn — decisions, preferences, lessons — and returns it in any connected tool, so one memory follows you across Claude Code, Cursor, VS Code and ChatGPT with a single API key. Mnemoverse re-ranks recall from outcomes: report that a recalled memory helped and a Rescorla-Wagner update on the prediction error raises it, report that it misled and it sinks — a different mechanism from similarity scoring, usable alongside it.
+
+## How it compares
+
+Most agent memory today lives in one of three places. Per-tool instruction files — `CLAUDE.md`, `.cursorrules`, `AGENTS.md` — are versioned and readable, but each copy belongs to one repo and one tool, and nothing follows you to the next window. A vector store behind RAG retrieves by similarity, and similarity never changes because advice helped or misled. Local-first memory servers win on privacy and latency, and ask you to run and update the infrastructure yourself. Mnemoverse is the managed, cross-tool option in that landscape: nothing to deploy, one key everywhere, and ranking that moves with reported outcomes. If you need memory inside your own perimeter, a local-first server is the better choice — this one is hosted by design.
+
+The consolidation stage of the engine — HDBSCAN clustering with Von Restorff protection, so distinctive memories are not absorbed into the average — is designed in and currently switched off on the hosted service; our docs say so rather than hide it.
 
 > ⭐ If Mnemoverse saves you from re-explaining context to your agents, [star the repo](https://github.com/mnemoverse/mcp-memory-server). It helps other builders find it.
 
@@ -20,6 +28,8 @@ Memory that persists across sessions, projects, and tools — and improves with 
 Sign up at [console.mnemoverse.com](https://console.mnemoverse.com?utm_source=npm&utm_medium=readme&utm_campaign=mcp-memory-server) — takes 30 seconds, no credit card.
 
 ### 2. Connect to your AI tool
+
+The two canonical setups, Claude Code and Cursor. Each writes the key **once, at user scope, covering every project**. Avoid a per-project config file for this: it lives inside the repository and can be committed with it, and a key belongs outside:
 
 <!-- INSTALL_SNIPPETS_START — generated from src/configs/source.json. Run `npm run generate:configs` to refresh. Do not edit by hand. -->
 
@@ -32,9 +42,17 @@ claude mcp add mnemoverse -s user \
   -- npx -y @mnemoverse/mcp-memory-server@latest
 ```
 
-**Cursor** — click to install, or add to `.cursor/mcp.json`:
+On Windows (PowerShell), paste the same command as one line — PowerShell does not read the `\` line continuations:
+
+```powershell
+claude mcp add mnemoverse -s user -e MNEMOVERSE_API_KEY=mk_live_YOUR_KEY -e MNEMOVERSE_API_URL=https://core.mnemoverse.com/api/v1 -- npx -y @mnemoverse/mcp-memory-server@latest
+```
+
+**Cursor** — click to install, or add the JSON below to `~/.cursor/mcp.json`, the global config that covers every project. Do not put it in a project-level `.cursor/mcp.json`: that file lives inside the repository and is committed with it unless you exclude it, and this config holds your key.
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=mnemoverse&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtbmVtb3ZlcnNlL21jcC1tZW1vcnktc2VydmVyQGxhdGVzdCJdLCJlbnYiOnsiTU5FTU9WRVJTRV9BUElfS0VZIjoibWtfbGl2ZV9ZT1VSX0tFWSIsIk1ORU1PVkVSU0VfQVBJX1VSTCI6Imh0dHBzOi8vY29yZS5tbmVtb3ZlcnNlLmNvbS9hcGkvdjEifX0%3D)
+
+The install button carries the placeholder key `mk_live_YOUR_KEY`, not yours, so the shortest path is to skip the button: add the JSON below to `~/.cursor/mcp.json`, merging it with any servers already there, and put your own key in place. Get one at [console.mnemoverse.com](https://console.mnemoverse.com?utm_source=npm&utm_medium=readme&utm_campaign=mcp-memory-server). If you did click the button, edit the same key in the `mcp.json` it wrote; Cursor keeps MCP environment values in that file, not in a settings form. Until the key is real the server starts and lists its tools, but every tool call is refused.
 
 ```json
 {
@@ -54,10 +72,26 @@ claude mcp add mnemoverse -s user \
 }
 ```
 
-**VS Code** — add to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`):
+
+<!-- INSTALL_SNIPPETS_END -->
+
+<details>
+<summary><b>All other clients</b> — VS Code, Windsurf, Zed, JetBrains, Cline, Continue</summary>
+
+<!-- MORE_CLIENTS_START — generated from src/configs/source.json. Run `npm run generate:configs` to refresh. Do not edit by hand. -->
+
+**VS Code** — the [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) signs in through the browser and needs no key; that's the default path. To wire the MCP server directly instead, add this to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). Never put a literal `mk_live_` key in that file — it's committed with the repo. The `inputs` entry below prompts for the key instead: VS Code masks what you type and stores it in its own secret storage, not in the file:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "mnemoverse-api-key",
+      "description": "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
+      "password": true
+    }
+  ],
   "servers": {
     "mnemoverse": {
       "type": "stdio",
@@ -67,7 +101,7 @@ claude mcp add mnemoverse -s user \
         "@mnemoverse/mcp-memory-server@latest"
       ],
       "env": {
-        "MNEMOVERSE_API_KEY": "mk_live_YOUR_KEY",
+        "MNEMOVERSE_API_KEY": "${input:mnemoverse-api-key}",
         "MNEMOVERSE_API_URL": "https://core.mnemoverse.com/api/v1"
       }
     }
@@ -174,7 +208,9 @@ mcpServers:
 
 > Why `@latest`? Bare `npx @mnemoverse/mcp-memory-server` is cached indefinitely by npm and stops re-checking the registry. The `@latest` suffix forces a metadata lookup on every Claude Code / Cursor / VS Code session start (~100-300ms), so you always pick up new releases.
 
-<!-- INSTALL_SNIPPETS_END -->
+<!-- MORE_CLIENTS_END -->
+
+</details>
 
 > ⚠️ **Restart your AI client** after editing the config. MCP servers are only picked up on client startup.
 
@@ -209,7 +245,11 @@ If it doesn't remember: check that the client was fully restarted and the config
 | `memory_list_rooms` | List rooms you own or joined, with each room's address to use as `domain` |
 | `vault_list` | List Vault secrets by alias and purpose — the secret value is never returned |
 
-## Ideas: What to Remember
+## Use cases
+
+The pattern that pays off first is cross-tool continuity: a decision made while pairing in Claude Code is there when you open Cursor an hour later, and the preference you stated in VS Code holds in a ChatGPT session that evening. Teams use shared rooms the same way — one place where an agent's lessons about a codebase accumulate instead of being re-taught per seat. And because recall re-ranks from feedback, the memories that keep proving useful surface first, which matters once a store grows past what anyone curates by hand.
+
+Concrete things worth writing:
 
 - **User preferences**: "I use dark mode", "I prefer Tailwind over CSS modules"
 - **Project context**: "This project uses PostgreSQL + Prisma", "Deploy to Railway"
@@ -238,6 +278,10 @@ The same API key works across all tools. Write a memory in Claude Code — read 
 | `MNEMOVERSE_API_KEY` | For every tool call — the server starts and lists its tools without one | — |
 | `MNEMOVERSE_API_URL` | No | `https://core.mnemoverse.com/api/v1` |
 
+## Research behind it
+
+The retrieval model is published: [arXiv:2603.08965](https://arxiv.org/abs/2603.08965), accepted at the GRAAI workshop at IEEE WCCI 2026 — it establishes the abstraction-discovery method the memory model builds on. No benchmark figures appear in this README, ours or anyone's: numbers will come with a reproducible run to stand behind, not before.
+
 ## Links
 
 **Setup and reference**
@@ -255,6 +299,25 @@ The same API key works across all tools. Write a memory in Claude Code — read 
 - [What AI agent memory is](https://mnemoverse.com/docs/library/ai-agent-memory) — the category explained
 - [Is this a vector database?](https://mnemoverse.com/docs/library/not-a-vector-database) — what makes a memory layer different
 - [Shared memory for multi-agent systems](https://mnemoverse.com/docs/library/shared-memory-for-multi-agent-systems) — how Rooms work and when to use them
+
+**Other ways to install it**
+
+The same memory, packaged for hosts that prefer a plugin or an extension over an MCP config block. How each one connects and authenticates differs, so the line below says which is which rather than claiming one flow for all of them.
+
+- [Claude Code plugin](https://github.com/mnemoverse/claude-plugin) — remote endpoint over MCP with an OAuth sign-in, no key to paste. Bundles the `agent-memory-discipline` skill
+  ```
+  claude plugin marketplace add mnemoverse/claude-plugin
+  claude plugin install mnemoverse@mnemoverse
+  ```
+- [Cursor plugin](https://github.com/mnemoverse/cursor-plugin) — same remote endpoint, same sign-in
+- [Gemini CLI extension](https://github.com/mnemoverse/gemini-extension) — same remote endpoint. `gemini extensions install https://github.com/mnemoverse/gemini-extension`
+- [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) — signs in through the browser, with pasting a key kept as a fallback command
+- Desktop extension: `manifest.json` in this repository is an MCPB manifest. This one is different from the four above: it runs the server as a local `node` process and reads `MNEMOVERSE_API_KEY` from the extension settings rather than calling the hosted endpoint. The packaged `.mcpb` ships with each release
+
+**Standing rules, separate from this server**
+
+- [agent-memory-discipline](https://github.com/mnemoverse/agent-memory-discipline) — when an agent should recall before acting and save afterward. CC0, backend-neutral, works against any memory store rather than this one. It carries its own [marketplace manifest](https://github.com/mnemoverse/agent-memory-discipline/blob/main/.claude-plugin/marketplace.json) under `.claude-plugin/`.
+- [awesome-agent-memory](https://github.com/mnemoverse/awesome-agent-memory) — a curated index of the category, CC0, including the servers this one competes with
 
 **Project**
 
