@@ -47,6 +47,99 @@ This file starts at 0.8.1. Entries for earlier versions are reconstructed from
 the release commits and are deliberately terse — for anything before 0.8.1 the
 git history and the GitHub releases are the record.
 
+## [Unreleased]
+
+## [0.10.1] — 2026-09-15
+
+A PATCH under this file's own rule. Every change in this release lands in
+`README.md`, `CONTRIBUTING.md`, `docs/`, or `.github/workflows/`, confirmed
+with `git diff v0.10.0..origin/main --stat -- src/`, which reports nothing.
+No tool, parameter, annotation or route moves, and no tool's behaviour
+changes. The published package's contents change only through `README.md`
+(the `files` field also ships `package.json`, whose own version field
+necessarily advances with every release, and `dist/`, which is unchanged
+since nothing under `src/` moved).
+
+### Security
+
+- **The generated VS Code snippet stopped telling readers to commit an API
+  key** (#126). `.vscode/mcp.json` is meant to be shared with a team, so the
+  old text said the key inside it should be shared too, which is advice to
+  commit a live `mk_live_` key to a repository. The snippet now leads with
+  the VS Code extension's key-free browser sign-in as the default path, and
+  the JSON example uses a top-level `inputs` prompt (`type: "promptString"`,
+  `password: true`) instead of a literal key value, referenced from `env` as
+  `${input:mnemoverse-api-key}`. `genVscodeFormat()` in
+  `scripts/generate-configs.mjs` builds the prompt from `source.json`'s
+  `secret: true` env entries, so the fix reaches every surface that channel
+  renders (`docs/configs/vscode.json`, `docs/snippets/vscode.md`, the
+  generated block in `README.md`).
+
+### Fixed
+
+- **The Cursor install snippet and the "Add to Cursor" button stopped
+  contradicting the founder's own public guidance on where a key may
+  live.** The generated snippet now recommends the global
+  `~/.cursor/mcp.json` and says plainly not to use a project-level
+  `.cursor/mcp.json`, since that file is committed with the repository; a
+  new paragraph under the one-click button explains the button installs the
+  placeholder key `mk_live_YOUR_KEY`, not the reader's own, and names the
+  file Cursor actually wrote so a reader who already clicked it can fix the
+  key (#123).
+
+### Added
+
+- **A README rewrite aimed at the surface a citation measurement showed is
+  actually read.** A citation panel (77 plus 76 queries) found github.com
+  ranking #1 or #2 as a source for Claude and ChatGPT, specifically this
+  repository's root README, which answered "how do I connect this to seven
+  clients" rather than "what is this." Restructured around a product-first
+  opening ("What is Mnemoverse Memory?"), a "How it compares" section
+  naming what it replaces (per-tool instruction files, vector-store RAG,
+  local-first servers, with an honest note on when local-first is the
+  better choice), one sentence on the research behind it (arXiv:2603.08965)
+  with zero benchmark numbers as policy, and one canonical install block
+  with the other seven clients collapsed into a details section (#120).
+- **The README now points at the other five ways this project ships**:
+  the Claude Code, Cursor and Gemini CLI plugins, the VS Code extension,
+  and the `.mcpb` desktop bundle, plus the backend-neutral
+  `agent-memory-discipline` skill and the `awesome-agent-memory` curated
+  list (named separately, since both apply to any memory backend and the
+  list includes competitors). None of the six had a single mention in the
+  previous README despite it being, by the same citation measurement, where
+  34 of 44 GitHub citations land. Verified live: all seven linked
+  repositories return 200, all five manifests return 200, and the `.mcpb`
+  bundle is present in the `v0.9.1` GitHub release. Deliberately left out:
+  a marketplace install command for `claude-plugin`, whose manifest is
+  still in an open PR and would fail today; printing an unverified command
+  was ruled out rather than risking a broken one (#124).
+- **A one-line PowerShell variant of the Claude Code install command**,
+  generated from the same `source.json` as the existing bash form so the
+  two cannot drift apart. The bash-only block used backslash line
+  continuations, which PowerShell (the default shell on Windows) does not
+  read, so a Windows reader following the published page hit a parse error
+  on the first line of setup (#122).
+- **A "Tool surface stability" policy, and `tools/list` is now frozen per
+  released version.** Within a PATCH, tool names, argument schemas and the
+  annotations object do not change (text may); within a MINOR, tools and
+  annotation fields may be added but never removed, renamed or silently
+  flipped, and a removal or rename is announced one MINOR ahead with a
+  `deprecated since x.y, removed in x.z` note. Written down after a reader
+  asked whether a saved `tools/list` could be diffed against a live one
+  release over release. No code change: the frozen baseline is the ten
+  tools this server already served in 0.10.0 (#125).
+- **A failed `release.yml` run now opens a GitHub issue instead of failing
+  silently on the Actions tab.** `v0.10.0` sat unpublished to npm for
+  fifteen days after an `npm error 404` on the publish step, because the
+  workflow's only notifier sat on the success branch and never ran, and the
+  separate `release-sync-check` workflow caught the drift the next morning
+  with no permission to open an issue while nobody was watching Actions.
+  Both workflows now end in a `notify-on-failure` job that opens one issue
+  per incident, deduped by an authorship, label and title-prefix match so a
+  green run, a repeat failure or a reopened tag do not create duplicates,
+  and guarded against a passer-by planting or hijacking the tracker on this
+  public repository. CI-only; nothing under `src/` moved (#121).
+
 ## [0.10.0] — 2026-08-31
 
 A PATCH under this file's own rule, corrected from the MINOR this paragraph
