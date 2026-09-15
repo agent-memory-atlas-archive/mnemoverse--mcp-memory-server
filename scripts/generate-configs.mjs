@@ -106,7 +106,7 @@ function genVscodeInputs() {
       type: "promptString",
       id: vscodeInputId(key),
       description:
-        "Mnemoverse API key (starts with mk_live_). Leave blank to skip — get one free at https://console.mnemoverse.com",
+        "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
       password: true,
     }));
 }
