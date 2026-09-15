@@ -1,4 +1,12 @@
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "mnemoverse-api-key",
+      "description": "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
+      "password": true
+    }
+  ],
   "servers": {
     "mnemoverse": {
       "type": "stdio",
@@ -8,7 +16,7 @@
         "@mnemoverse/mcp-memory-server@latest"
       ],
       "env": {
-        "MNEMOVERSE_API_KEY": "mk_live_YOUR_KEY",
+        "MNEMOVERSE_API_KEY": "${input:mnemoverse-api-key}",
         "MNEMOVERSE_API_URL": "https://core.mnemoverse.com/api/v1"
       }
     }

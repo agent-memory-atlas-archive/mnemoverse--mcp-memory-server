@@ -80,16 +80,60 @@ function genMcpServersFormat() {
 }
 
 /**
- * VS Code (Copilot Chat) format — uses `servers` key (not `mcpServers`).
+ * VS Code `inputs` id for one source.env entry: lowercase, underscores to
+ * dashes (MNEMOVERSE_API_KEY → mnemoverse-api-key), so it reads as the
+ * `${input:mnemoverse-api-key}` reference VS Code substitutes at connect time.
+ */
+function vscodeInputId(envName) {
+  return envName.toLowerCase().replace(/_/g, "-");
+}
+
+/**
+ * `.vscode/mcp.json` is committed with the repo like any other project file,
+ * so a literal secret in its `env` block ships to every collaborator's git
+ * history. VS Code's own docs warn against exactly this and document the fix:
+ * an `inputs` entry with `password: true` prompts for the value once and
+ * VS Code stores it in its own secret storage, substituting
+ * `${input:<id>}` at connect time — the value itself never lands in the file.
+ * (docs.md source: https://code.visualstudio.com/docs/agents/reference/mcp-configuration#_input-variables-for-sensitive-data,
+ * verified 2026-09-14.) Only entries marked `secret: true` in source.json get
+ * an input; MNEMOVERSE_API_URL is not a secret and stays a literal default.
+ */
+function genVscodeInputs() {
+  return Object.entries(source.env)
+    .filter(([, meta]) => meta.secret)
+    .map(([key]) => ({
+      type: "promptString",
+      id: vscodeInputId(key),
+      description:
+        "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
+      password: true,
+    }));
+}
+
+function genVscodeEnv() {
+  const result = {};
+  for (const [key, meta] of Object.entries(source.env)) {
+    result[key] = meta.secret ? `\${input:${vscodeInputId(key)}}` : meta.value;
+  }
+  return result;
+}
+
+/**
+ * VS Code (Copilot Chat) format — uses `servers` key (not `mcpServers`), plus
+ * a top-level `inputs` array so the secret env value is prompted for rather
+ * than written into the file (see genVscodeInputs() above).
  */
 function genVscodeFormat() {
+  const inputs = genVscodeInputs();
   return {
+    ...(inputs.length ? { inputs } : {}),
     servers: {
       [source.name]: {
         type: source.type,
         command: source.command,
         args: source.args,
-        env: ENV_VALUES,
+        env: genVscodeEnv(),
       },
     },
   };
@@ -286,14 +330,15 @@ function snippetMcpServersJson(label, configPath) {
 
 function snippetVscode() {
   // VS Code uses `servers` (not `mcpServers`) and requires `type: "stdio"`.
-  // `.vscode/mcp.json` is meant to be committed and shared with the team —
-  // which means the key in it is too, the same repo-config risk the Cursor
-  // snippet above warns against. Point at VS Code's user-profile config
-  // (via the Command Palette, since it has no fixed cross-platform path
-  // the way ~/.cursor/mcp.json does) as the way to keep the key out of git.
+  // `.vscode/mcp.json` is a project file and gets committed with the repo
+  // like any other — so a literal key in it ships to every collaborator's
+  // git history. Never advise that; VS Code's own `inputs` mechanism (see
+  // genVscodeInputs() above) exists to avoid exactly this, prompting for the
+  // secret and keeping it out of the file entirely, so the JSON below is
+  // generated with that shape rather than a literal key.
   const json = JSON.stringify(genVscodeFormat(), null, 2);
   return (
-    "**VS Code** — add to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). That file is meant to be committed and shared with your team, so the key in it is too — if you'd rather keep it out of the repo, run **MCP: Open User Configuration** from the Command Palette and add the same JSON to your user profile's `mcp.json` instead:\n\n" +
+    "**VS Code** — the [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) signs in through the browser and needs no key; that's the default path. To wire the MCP server directly instead, add this to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). Never put a literal `mk_live_` key in that file — it's committed with the repo. The `inputs` entry below prompts for the key instead: VS Code masks what you type and stores it in its own secret storage, not in the file:\n\n" +
     "```json\n" +
     json +
     "\n```\n"
