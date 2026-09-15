@@ -423,7 +423,7 @@ jobs:
         leg failed), a re-run stops at `npm publish` with a 403 because the version
         exists; complete the remaining legs by hand (registry publish, GitHub release,
         the docs ping) or cut a patch release, as CONTRIBUTING.md describes under
-        "recovering a half-landed release".
+        "Automated release pipeline" (the half-landed release note).
 
         `release-sync check` (daily, 07:00 UTC) is what verifies the recovery: it compares
         every first-party surface against `package.json#version` and stays red until they
