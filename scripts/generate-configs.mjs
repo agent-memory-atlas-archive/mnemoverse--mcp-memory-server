@@ -367,9 +367,19 @@ function snippetVscode() {
   // genVscodeInputs() above) exists to avoid exactly this, prompting for the
   // secret and keeping it out of the file entirely, so the JSON below is
   // generated with that shape rather than a literal key.
+  //
+  // That same `inputs` mechanism is why this config (and the VS Code deep
+  // link, which carries the identical `inputs` array, see genVscodeDeepLink()
+  // above) does not work unattended: VS Code's own docs say it "forwards the
+  // servers you configure to the Agent Host, except servers that require
+  // interactive input (for example, `${input:...}` variables)"
+  // (https://code.visualstudio.com/docs/agents/reference/mcp-configuration,
+  // "Configuration file" section, verified 2026-09-15). There is no second,
+  // input-free config to generate instead; the fix is the caveat below, not
+  // a new snippet, per PR #127 review.
   const json = JSON.stringify(genVscodeFormat(), null, 2);
   return (
-    "**VS Code** — the [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) signs in through the browser and needs no key; that's the default path. To wire the MCP server directly instead, add this to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). Never put a literal `mk_live_` key in that file — it's committed with the repo. The `inputs` entry below prompts for the key instead: VS Code masks what you type and stores it in its own secret storage, not in the file:\n\n" +
+    "**VS Code** — the [VS Code extension](https://github.com/mnemoverse/mnemoverse-vscode) signs in through the browser and needs no key; that's the default path. In VS Code's non-interactive Agent Host mode, servers that prompt for inputs like this one are not started; for unattended use there, put the key in the environment of the process that launches VS Code instead. To wire the MCP server directly instead, add this to `.vscode/mcp.json` (note: VS Code uses `servers`, not `mcpServers`). Never put a literal `mk_live_` key in that file — it's committed with the repo. The `inputs` entry below prompts for the key instead: VS Code masks what you type and stores it in its own secret storage, not in the file:\n\n" +
     "```json\n" +
     json +
     "\n```\n"
