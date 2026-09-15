@@ -245,6 +245,32 @@ If it doesn't remember: check that the client was fully restarted and the config
 | `memory_list_rooms` | List rooms you own or joined, with each room's address to use as `domain` |
 | `vault_list` | List Vault secrets by alias and purpose — the secret value is never returned |
 
+### Tool surface stability
+
+`tools/list` is frozen per released version, so a client can save the list it
+saw and diff it against what the server serves today, by version.
+
+- **Within a PATCH** (x.y.Z): tool names, argument schemas and the `annotations`
+  object of every tool (`title`, `readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`) do not change. Only text may: descriptions
+  and what a tool returns, as the CHANGELOG rules state.
+- **Within a MINOR** (x.Y.0): tools and annotation fields may be added, never
+  removed or renamed, and no declared annotation field disappears or flips
+  silently. Every addition has a line in the CHANGELOG under that version.
+- **Removing or renaming a tool, or dropping or renaming a declared annotation
+  field,** is announced one MINOR ahead: the tool stays, its description says
+  `deprecated since x.y, removed in x.z`, and the change lands only in the
+  announced version, with its CHANGELOG line. A rename is announced by naming
+  both the old and the new name; the version pair alone does not say what a
+  client should look for. Because a MINOR may add a field but not remove one, a
+  renamed annotation field is declared under both names until the announced
+  version.
+- Any difference between two servers of the same version is a bug. Report it
+  with both `tools/list` outputs.
+
+The list above is the 0.10 surface: ten tools, each declaring all four hints.
+The hosted connector at `mcp.mnemoverse.com/mcp` serves the same ten.
+
 ## Use cases
 
 The pattern that pays off first is cross-tool continuity: a decision made while pairing in Claude Code is there when you open Cursor an hour later, and the preference you stated in VS Code holds in a ChatGPT session that evening. Teams use shared rooms the same way — one place where an agent's lessons about a codebase accumulate instead of being re-taught per seat. And because recall re-ranks from feedback, the memories that keep proving useful surface first, which matters once a store grows past what anyone curates by hand.
