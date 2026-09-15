@@ -98,15 +98,24 @@ function vscodeInputId(envName) {
  * (docs.md source: https://code.visualstudio.com/docs/agents/reference/mcp-configuration#_input-variables-for-sensitive-data,
  * verified 2026-09-14.) Only entries marked `secret: true` in source.json get
  * an input; MNEMOVERSE_API_URL is not a secret and stays a literal default.
+ *
+ * `description` reads from source.env[key].description rather than a
+ * hardcoded string, so this prompt text and the registry-facing
+ * `environmentVariables[].description` in genServerJson() below say one
+ * thing instead of two that can drift apart (found diverged on review of
+ * #126, 2026-09-15). The VS-Code-only detail that used to live here, namely
+ * the extension's browser sign-in as a no-key alternative, is not in
+ * source.json's shared description, so it is not repeated here either; it
+ * still ships to VS Code users in the prose above the JSON in
+ * snippetVscode() below.
  */
 function genVscodeInputs() {
   return Object.entries(source.env)
     .filter(([, meta]) => meta.secret)
-    .map(([key]) => ({
+    .map(([key, meta]) => ({
       type: "promptString",
       id: vscodeInputId(key),
-      description:
-        "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
+      description: meta.description,
       password: true,
     }));
 }
@@ -224,15 +233,37 @@ function genCursorInstallButton() {
  * VS Code deep link.
  *
  * Format: vscode:mcp/install?{URL_ENCODED_JSON}
- * The JSON contains name + the server object (not wrapped in `servers`).
+ * The JSON contains name + the server object (not wrapped in `servers`), plus
+ * a top-level `inputs` array: the SAME prompt mechanism `.vscode/mcp.json`
+ * uses (see genVscodeInputs() above), not something the link format lacks.
+ * None of VS Code's published docs pages document the install-link JSON shape
+ * beyond `name`/`command` (checked docs/agents/reference/mcp-configuration,
+ * docs/agent-customization/mcp-servers, and api/extension-guides/ai/mcp on
+ * 2026-09-15, none mention `inputs` here). Confirmed instead by VS Code's own
+ * source: `parseMcpInstallUriPayload` in
+ * https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/mcp/browser/mcpWorkbenchService.ts
+ * declares `interface IMcpInstallUriPayload { name; config; inputs?:
+ * IMcpServerVariable[] }` and reads `inputs` off the SAME top-level JSON
+ * object as `name`/`command`/`env` (`sanitizeMcpServerConfiguration` reads
+ * those from that same payload; there is no nested `config` key on the
+ * wire). `IMcpServerVariable` in
+ * src/vs/platform/mcp/common/mcpPlatformTypes.ts is `{id, type, description,
+ * password, ...}`, exactly what genVscodeInputs() already emits for
+ * mcp.json. Verified against microsoft/vscode `main`, 2026-09-15. So the deep
+ * link now carries the identical `${input:...}` env reference and `inputs`
+ * array as the JSON snippet, instead of the literal
+ * `MNEMOVERSE_API_KEY=mk_live_YOUR_KEY` sample it used to encode (#126
+ * leftover, found on review 2026-09-15).
  */
 function genVscodeDeepLink() {
+  const inputs = genVscodeInputs();
   const inner = {
     name: source.name,
     type: source.type,
     command: source.command,
     args: source.args,
-    env: ENV_VALUES,
+    env: genVscodeEnv(),
+    ...(inputs.length ? { inputs } : {}),
   };
   return `vscode:mcp/install?${encodeURIComponent(JSON.stringify(inner))}`;
 }

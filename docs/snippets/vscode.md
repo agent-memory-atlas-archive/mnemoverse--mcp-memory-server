@@ -8,7 +8,7 @@
     {
       "type": "promptString",
       "id": "mnemoverse-api-key",
-      "description": "Mnemoverse API key (starts with mk_live_), free at https://console.mnemoverse.com. Without one every memory tool call fails; the VS Code extension signs in through the browser instead.",
+      "description": "Mnemoverse API key (starts with mk_live_). Optional to install and inspect — the server starts and lists its tools without a key; every actual tool call requires one. Get one free in ~30s at https://console.mnemoverse.com",
       "password": true
     }
   ],
