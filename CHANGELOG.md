@@ -47,6 +47,38 @@ This file starts at 0.8.1. Entries for earlier versions are reconstructed from
 the release commits and are deliberately terse — for anything before 0.8.1 the
 git history and the GitHub releases are the record.
 
+## [Unreleased]
+
+### Fixed
+
+- **The VS Code deep link no longer encodes a literal API key.**
+  `genVscodeDeepLink()` (`scripts/generate-configs.mjs`) baked
+  `MNEMOVERSE_API_KEY=mk_live_YOUR_KEY` into
+  `docs/configs/vscode-deep-link.txt` while the `.vscode/mcp.json` snippet
+  right next to it already prompted for the key via `inputs` plus
+  `${input:mnemoverse-api-key}`, the same generator disagreeing with itself
+  about the same secret. VS Code's own source confirms the
+  `vscode:mcp/install` link accepts a top-level `inputs` array, the same
+  shape `.vscode/mcp.json` uses: `parseMcpInstallUriPayload` in
+  `src/vs/workbench/contrib/mcp/browser/mcpWorkbenchService.ts` declares
+  `IMcpInstallUriPayload { name; config; inputs?: IMcpServerVariable[] }` and
+  reads `inputs` off the same top-level JSON object as `name`/`command`/`env`.
+  This is undocumented on any published VS Code docs page, but present in the
+  shipped TypeScript (checked against `microsoft/vscode` `main`,
+  2026-09-15). The deep link now carries `${input:mnemoverse-api-key}` in
+  `env` plus the matching `inputs` entry instead of the placeholder value.
+  Found on review of #126.
+- **The VS Code input prompt's description now comes from `source.json`.**
+  `genVscodeInputs()` hardcoded its own sentence, which had drifted from
+  `env.MNEMOVERSE_API_KEY.description`, the same field `genServerJson()`
+  already publishes as the environment variable description in the MCP
+  Registry manifest. Both now read the one description in
+  `src/configs/source.json`. The VS-Code-only detail that used to live in the
+  hardcoded sentence, namely the extension's browser sign-in as a no-key
+  alternative, is not part of that shared, registry-facing description, so
+  it stays where it was already stated correctly: the prose above the JSON
+  block in `snippetVscode()`. Found on review of #126.
+
 ## [0.10.0] — 2026-08-31
 
 A PATCH under this file's own rule, corrected from the MINOR this paragraph
