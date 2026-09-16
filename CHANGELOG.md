@@ -49,6 +49,21 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
+### Security
+
+- **Closed all 11 open Dependabot alerts** (4 high, 7 medium), all transitive
+  or dev-only, all resolved by `npm audit fix` within the existing semver
+  ranges — `package.json` is unchanged, only `package-lock.json`. `hono`
+  4.13.1 → 4.13.8 (via `@modelcontextprotocol/sdk`; GHSA-crvj-82cr-hjcx,
+  GHSA-g6gw-c38x-mqfc, GHSA-gqvv-2mrq-wpjv) — no source file in this package
+  imports `hono` directly, so none of the fixed request-parsing paths are ones
+  we call. `fast-uri` 3.1.5 → 3.1.8 (via `ajv` via `@modelcontextprotocol/sdk`;
+  GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf,
+  GHSA-jqff-g426-hqxp). `qs` 6.15.3 → 6.16.0 (via `express` via
+  `@modelcontextprotocol/sdk`; GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g).
+  `vitest` (devDependency) 4.1.10 → 4.1.11 with its `@vitest/mocker`
+  dependency, both GHSA-82fw-gwwq-j7x9.
+
 ### Fixed
 
 - **The VS Code deep link no longer encodes a literal API key.**
