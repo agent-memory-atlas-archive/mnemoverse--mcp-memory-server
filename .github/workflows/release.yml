@@ -29,7 +29,9 @@ name: release
 # Prereq: `permissions: id-token: write` on the job, and the authenticating user's org
 # membership (izgorodin in mnemoverse) must be public — already done.
 #
-# Prerequisite secrets you must add at repo Settings > Secrets and variables > Actions:
+# Prerequisite secrets, added as environment secrets on the `release`
+# environment (Settings > Environments > release), where NPM_TOKEN and
+# DOCS_DISPATCH_TOKEN both live:
 #   - NPM_TOKEN — npm automation token from npmjs.com/settings/{org}/tokens/granular-access-tokens/new
 #                 (select "Automation", grant publish access to @mnemoverse/mcp-memory-server).
 #   - DOCS_DISPATCH_TOKEN (optional) — fine-grained PAT, mnemoverse-docs only,
