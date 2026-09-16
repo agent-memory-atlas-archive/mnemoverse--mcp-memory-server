@@ -74,6 +74,18 @@ since nothing under `src/` moved).
   `secret: true` env entries, so the fix reaches every surface that channel
   renders (`docs/configs/vscode.json`, `docs/snippets/vscode.md`, the
   generated block in `README.md`).
+- **Closed all 11 open Dependabot alerts** (4 high, 7 medium), all transitive
+  or dev-only, all resolved by `npm audit fix` within the existing semver
+  ranges — `package.json` is unchanged, only `package-lock.json`. `hono`
+  4.13.1 → 4.13.8 (via `@modelcontextprotocol/sdk`; GHSA-crvj-82cr-hjcx,
+  GHSA-g6gw-c38x-mqfc, GHSA-gqvv-2mrq-wpjv) — no source file in this package
+  imports `hono` directly, so none of the fixed request-parsing paths are ones
+  we call. `fast-uri` 3.1.5 → 3.1.8 (via `ajv` via `@modelcontextprotocol/sdk`;
+  GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf,
+  GHSA-jqff-g426-hqxp). `qs` 6.15.3 → 6.16.0 (via `express` via
+  `@modelcontextprotocol/sdk`; GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g).
+  `vitest` (devDependency) 4.1.10 → 4.1.11 with its `@vitest/mocker`
+  dependency, both GHSA-82fw-gwwq-j7x9.
 
 ### Fixed
 
@@ -86,6 +98,33 @@ since nothing under `src/` moved).
   placeholder key `mk_live_YOUR_KEY`, not the reader's own, and names the
   file Cursor actually wrote so a reader who already clicked it can fix the
   key (#123).
+- **The VS Code deep link no longer encodes a literal API key.**
+  `genVscodeDeepLink()` (`scripts/generate-configs.mjs`) baked
+  `MNEMOVERSE_API_KEY=mk_live_YOUR_KEY` into
+  `docs/configs/vscode-deep-link.txt` while the `.vscode/mcp.json` snippet
+  right next to it already prompted for the key via `inputs` plus
+  `${input:mnemoverse-api-key}`, the same generator disagreeing with itself
+  about the same secret. VS Code's own source confirms the
+  `vscode:mcp/install` link accepts a top-level `inputs` array, the same
+  shape `.vscode/mcp.json` uses: `parseMcpInstallUriPayload` in
+  `src/vs/workbench/contrib/mcp/browser/mcpWorkbenchService.ts` declares
+  `IMcpInstallUriPayload { name; config; inputs?: IMcpServerVariable[] }` and
+  reads `inputs` off the same top-level JSON object as `name`/`command`/`env`.
+  This is undocumented on any published VS Code docs page, but present in the
+  shipped TypeScript (checked against `microsoft/vscode` `main`,
+  2026-09-15). The deep link now carries `${input:mnemoverse-api-key}` in
+  `env` plus the matching `inputs` entry instead of the placeholder value.
+  Found on review of #126.
+- **The VS Code input prompt's description now comes from `source.json`.**
+  `genVscodeInputs()` hardcoded its own sentence, which had drifted from
+  `env.MNEMOVERSE_API_KEY.description`, the same field `genServerJson()`
+  already publishes as the environment variable description in the MCP
+  Registry manifest. Both now read the one description in
+  `src/configs/source.json`. The VS-Code-only detail that used to live in the
+  hardcoded sentence, namely the extension's browser sign-in as a no-key
+  alternative, is not part of that shared, registry-facing description, so
+  it stays where it was already stated correctly: the prose above the JSON
+  block in `snippetVscode()`. Found on review of #126.
 
 ### Added
 
