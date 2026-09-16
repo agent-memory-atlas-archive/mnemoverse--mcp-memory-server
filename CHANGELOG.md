@@ -49,7 +49,7 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
-## [0.10.1] — 2026-09-15
+## [0.10.1] — 2026-09-16
 
 A PATCH under this file's own rule. Every change in this release lands in
 `README.md`, `CONTRIBUTING.md`, `docs/`, or `.github/workflows/`, confirmed
