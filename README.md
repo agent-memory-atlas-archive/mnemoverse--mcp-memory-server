@@ -31,6 +31,32 @@ The consolidation stage of the engine — HDBSCAN clustering with Von Restorff p
 
 Sign up at [console.mnemoverse.com](https://console.mnemoverse.com?utm_source=npm&utm_medium=readme&utm_campaign=mcp-memory-server) — takes 30 seconds, no credit card.
 
+**Check the key before you put it in a config.** Both forms ask for the key at a masked prompt and never pass it as a command argument, so it lands neither in your shell history nor in the process list.
+
+macOS, Linux, Git Bash:
+```bash
+printf 'Mnemoverse API key: '; read -rs KEY; echo
+printf 'X-Api-Key: %s\n' "$KEY" | curl -s -H @- https://core.mnemoverse.com/api/v1/memory/stats; unset KEY
+```
+
+Windows PowerShell 5.1 and PowerShell 7:
+```powershell
+$k = [Net.NetworkCredential]::new('', (Read-Host 'Mnemoverse API key' -AsSecureString)).Password
+try { (Invoke-WebRequest https://core.mnemoverse.com/api/v1/memory/stats -Headers @{ 'X-Api-Key' = $k } -UseBasicParsing).Content }
+catch { if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } }; Remove-Variable k
+```
+
+| The output contains | What it means |
+|---|---|
+| JSON that includes `"total_atoms"` | The key works. |
+| `"reason":"placeholder_key"` | That is the example key from these docs. Create a real one at the console. |
+| `"reason":"malformed_key"` | Not the shape of a key: cut short in the paste, wrapped in quotes, or a different token entirely. |
+| `"reason":"invalid_key"` | The shape is right and no such key exists. Copy it again from the console. |
+| `"reason":"revoked_key"` | The key was revoked and will not work again. Create a new one. |
+| `"reason":"missing_key"` | No key reached the API: what you entered was empty. |
+
+In the JSON, `reason` sits inside the `details` object (`details.reason`), next to `details.keys_url`, the console page where keys are created.
+
 ### 2. Connect to your AI tool
 
 The two canonical setups, Claude Code and Cursor. Each writes the key **once, at user scope, covering every project**. Avoid a per-project config file for this: it lives inside the repository and can be committed with it, and a key belongs outside:
