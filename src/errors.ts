@@ -30,6 +30,10 @@
  * folklore. The distinctions below are the entire point of this file:
  *
  *   401  auth.py — "Invalid or revoked API key." / "Missing API key." The key.
+ *        (Read on 2026-08-16. Since 2026-09-20 the engine answers a sentence
+ *        per cause and adds `details.reason` and `details.keys_url`; the old
+ *        sentence is what an engine without that change still sends, which is
+ *        why explain401 keeps the substring branch as its fallback.)
  *   403  routes.py, rooms_routes.py, auth.py — "Room is archived", "Not an
  *        active member of this room", "Read-only membership cannot write to
  *        this room", "Invalid room address", "You do not own this room", plus
@@ -336,8 +340,12 @@ function explain401(env: ErrorEnvelope): string {
           "value does not have the shape of a Mnemoverse key at all " +
           "(mk_live_ followed by 32 lower-case hex characters). Common " +
           "causes are pasting something else entirely, such as an OAuth " +
-          "token, or the key arriving wrapped in quotes or surrounding " +
-          `spaces. Tell the user to check MNEMOVERSE_API_KEY against a real ` +
+          "token, a key cut short in the paste, or a key wrapped in " +
+          // Not "surrounding spaces": `fetch` trims whitespace around a header
+          // value (and so does HTTP), so a padded key reaches the engine
+          // intact and is judged on its own. Probed live on 2026-09-20: a
+          // quoted key is malformed_key, a key with a trailing space is not.
+          `quotes. Tell the user to check MNEMOVERSE_API_KEY against a real ` +
           `key from ${keysUrl}. Do not retry until it is fixed.`
         );
       case "missing_key":
