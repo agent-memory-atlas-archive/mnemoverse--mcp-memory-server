@@ -49,6 +49,41 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
+### Added
+
+- **`@mnemoverse/mcp-memory-server/shared`: the ten memory tools as one function
+  another MCP server can register.** ADR-025 (mnemoverse-core) makes this package
+  the definition of the Mnemoverse MCP surface. Until now the hosted connector
+  (`mnemoverse-mcp-remote`) kept its own hand-written copy of every tool, and the
+  two had drifted in wording, errors, paging and room handling. The new entry
+  exports `registerMemoryTools(server, { apiFetch })`, `SERVER_INSTRUCTIONS` and
+  the three error classes an `apiFetch` must reject with. Importing it starts
+  nothing: the stdio server stays in the main entry, which it does not import.
+  This is the package's first `exports` map, and it narrows nothing: `.` still
+  resolves to `dist/index.js` (as do `main` and the `bin`), and a `./dist/*`
+  passthrough keeps every path under `dist/` importable exactly as before, so a
+  consumer that imported, say, `@mnemoverse/mcp-memory-server/dist/errors.js`
+  is not broken by the upgrade.
+
+### Fixed
+
+- **`memory_list_recent` no longer says "More entries exist" when the feed has
+  ended.** When the engine answered with an empty `next_cursor` (`""`), the
+  paging loop correctly stopped, but the page was rendered with that empty
+  string as its cursor. The renderer reads only a missing cursor as the end, so
+  a finished feed printed "More entries exist but the continuation token could
+  not be displayed", an existence claim with nothing behind it. An empty
+  cursor now ends the page as it ends the loop, on both paths that set it. Any
+  other value the renderer cannot print still says entries exist. Found by
+  CodeRabbit in the code this release moved to `src/tools.ts`; the bug predates
+  the move.
+  This change only moves code: the handlers in `src/tools.ts` are the lines that
+  were in `src/index.ts`, verbatim except for indentation. No tool, parameter,
+  text or annotation changes, and the stdio server behaves exactly as before.
+  The two source-level denylists in the tests (no domain normalisation, no
+  domain through `safeInline`) now scan `src/tools.ts` too. Scanning only the
+  file the handlers left would have kept them green while guarding nothing.
+
 ## [0.10.2] — 2026-09-20
 
 A PATCH under this file's own rule: it changes TEXT and removes a request, and it changes no SHAPE and no ROUTING.
