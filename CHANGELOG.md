@@ -25,12 +25,15 @@ being told. 0.8.1 adds such probes; the disclosure is in its entry below.
 **What a MINOR may do to the tool surface** (stated 2026-09-13, after a reader
 asked to diff a saved `tools/list` against a live one): add tools and add
 annotation fields, each with its own line here. It may not remove or rename a
-tool, and it may not drop, rename or silently flip a declared annotation field.
-A removal or a rename, of a tool or of an annotation field, is announced one
-MINOR ahead (the tool stays and its description says `deprecated since x.y,
-removed in x.z`; a rename also names the old and the new name) and lands only in
-the announced version. A renamed annotation field is declared under both names
-until then, since a MINOR may add a field but not remove one. `tools/list` is therefore frozen per released version, and
+tool or a tool's input parameter, and it may not drop, rename or silently flip a
+declared annotation field. A removal or a rename, of a tool, a parameter or an
+annotation field, is announced one MINOR ahead (the tool or parameter stays and
+its description says `deprecated since x.y, removed in x.z`; a rename also names
+the old and the new name) and lands only in the announced version. A renamed
+parameter is accepted under both names until then, and a renamed annotation
+field is declared under both names until then, since a MINOR may add a field but
+not remove one. (Parameters were added to this rule on 2026-09-21, with the
+first parameter rename, so that it and the README say the same thing.) `tools/list` is therefore frozen per released version, and
 two servers of one version that differ are a bug. The README section "Tool
 surface stability" is the reader-facing statement of the same rule.
 
@@ -64,6 +67,13 @@ git history and the GitHub releases are the record.
   passthrough keeps every path under `dist/` importable exactly as before, so a
   consumer that imported, say, `@mnemoverse/mcp-memory-server/dist/errors.js`
   is not broken by the upgrade.
+  The refactor behind it only moves code: the handlers in `src/tools.ts` are the
+  lines that were in `src/index.ts`, verbatim except for indentation. No tool,
+  parameter, text or annotation changes, and the stdio server behaves exactly
+  as before. The two source-level denylists in the tests (no domain
+  normalisation, no domain through `safeInline`) now scan `src/tools.ts` too.
+  Scanning only the file the handlers left would have kept them green while
+  guarding nothing.
 
 ### Fixed
 
@@ -77,12 +87,39 @@ git history and the GitHub releases are the record.
   other value the renderer cannot print still says entries exist. Found by
   CodeRabbit in the code this release moved to `src/tools.ts`; the bug predates
   the move.
-  This change only moves code: the handlers in `src/tools.ts` are the lines that
-  were in `src/index.ts`, verbatim except for indentation. No tool, parameter,
-  text or annotation changes, and the stdio server behaves exactly as before.
-  The two source-level denylists in the tests (no domain normalisation, no
-  domain through `safeInline`) now scan `src/tools.ts` too. Scanning only the
-  file the handlers left would have kept them green while guarding nothing.
+
+### Changed
+
+Three decisions about the shared MCP surface (owner, 2026-09-21). The stdio
+server and the hosted connector had answered each one in opposite ways. Under this
+file's tool-surface rule each change is announced here and none is silent.
+
+- **`memory_feedback`: `destructiveHint` flips from `true` to `false`.** Only
+  deletion is destructive. A rating moves a memory's valence and the weights of
+  its associations, which decide how it ranks. The saved text, its concepts and
+  its domain are untouched, and later ratings keep moving those scores. The old
+  `true` cited the spec's "destructive update" to stored state. A client that
+  confirms destructive tools would have asked before every rating, taxing the
+  one signal the ranking learns from. Keeping every rating, so that any single
+  one can be undone, is planned in the engine; until it ships, each rating
+  replaces the previous scores.
+- **All ten tools: `openWorldHint` flips from `true` to `false`.** Every tool
+  works on the user's own memory store and reaches nothing else. That the
+  store sits behind an API does not make it an open world.
+- **`memory_feedback` takes `memory_ids`.** The tool rates memories, which is
+  what every result is; an atom is the engine's word for its smallest unit.
+  The hosted connector already names the parameter so.
+  **`atom_ids` is deprecated since 0.11 and removed in 0.12**: until then it
+  is still accepted on its own. Passing both is refused with a sentence and
+  nothing is rated, since which list was meant would be a guess. Passing
+  neither is refused the same way. The request to the API is unchanged: it
+  still sends the engine's field name, `atom_ids`. Neither name checks the id
+  format or caps the count, because the engine validates the ids and sets no
+  maximum (ADR-025 keeps such checks with the engine). The one check here is
+  that the list is not empty, since rating nothing is not a call. `llms.txt`,
+  which agents read to learn the tools, names `memory_ids` too, and a test now
+  holds every parameter listed there, with its type and whether it is
+  required, to the schema the server registers.
 
 ## [0.10.2] — 2026-09-20
 

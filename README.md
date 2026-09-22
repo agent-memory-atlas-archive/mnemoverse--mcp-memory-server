@@ -289,10 +289,13 @@ saw and diff it against what the server serves today, by version.
 - **Within a MINOR** (x.Y.0): tools and annotation fields may be added, never
   removed or renamed, and no declared annotation field disappears or flips
   silently. Every addition has a line in the CHANGELOG under that version.
-- **Removing or renaming a tool, or dropping or renaming a declared annotation
-  field,** is announced one MINOR ahead: the tool stays, its description says
+- **Removing or renaming a tool or a tool's input parameter, or dropping or
+  renaming a declared annotation field,** is announced one MINOR ahead: the
+  tool (or parameter) stays, its description says
   `deprecated since x.y, removed in x.z`, and the change lands only in the
-  announced version, with its CHANGELOG line. A rename is announced by naming
+  announced version, with its CHANGELOG line. A renamed parameter is accepted
+  under both names until then (0.11: `memory_feedback`'s `atom_ids` became
+  `memory_ids`). A rename is announced by naming
   both the old and the new name; the version pair alone does not say what a
   client should look for. Because a MINOR may add a field but not remove one, a
   renamed annotation field is declared under both names until the announced
@@ -395,7 +398,7 @@ What each tool sends:
 | `memory_write` | the `content`, `concepts`, and `domain` you pass |
 | `memory_read` | the `query`, plus any filters: `domain`, `since`/`until`, `exclude_author`, `top_k`, `order_by` |
 | `memory_list_recent` | the feed filters: `domain`, `since`/`until`, `exclude_author`, `limit`, `cursor` |
-| `memory_feedback` | the `atom_ids` being rated and the `outcome` score |
+| `memory_feedback` | the `memory_ids` being rated (sent to the API as `atom_ids`) and the `outcome` score |
 | `memory_create_room` | the room `name` and `description` |
 | `memory_invite_to_room` | the `room_id`, invite `scope`, and expiry |
 | `memory_join_room` | the invite `code` |
