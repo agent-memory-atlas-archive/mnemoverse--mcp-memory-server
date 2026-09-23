@@ -283,6 +283,15 @@ export function formatRecentItem(item: RecentItem, index: number): string {
 }
 
 /**
+ * The shape of a continuation token this client is willing to pass on
+ * (CN-032): the server-supplied cursor is opaque, so this is an allowlist
+ * of bytes, not a format. One constant for BOTH surfaces, the text (below)
+ * and `structuredContent.next_cursor` (src/tools.ts), so they cannot
+ * disagree about which token is passable.
+ */
+export const CURSOR_RE = /^[A-Za-z0-9_=-]{1,512}$/;
+
+/**
  * Full feed page: items newest-first + how to continue / that it's over.
  *
  * Returns the BODY only — no escape legend. The legend belongs to the final
@@ -293,7 +302,10 @@ export function formatRecentItem(item: RecentItem, index: number): string {
  * 2026-08-08). Once-per-answer still holds — withDomainEscapeLegend is
  * at-most-once by construction (src/names.ts).
  */
-export function formatRecentPage(items: RecentItem[], nextCursor?: string | null): string {
+// `nextCursor` is typed loosely on purpose: it is a server-supplied wire
+// value, and a number where a string was promised must fail the gate below
+// rather than be coerced into it by the regex test (review, 2026-09-23).
+export function formatRecentPage(items: RecentItem[], nextCursor?: unknown): string {
   const lines = items.map((it, i) => formatRecentItem(it, i));
   // Defense-in-depth (CN-032 posture): the cursor is server-supplied and
   // interpolated into instructional text — only echo it when it matches the
@@ -316,7 +328,7 @@ export function formatRecentPage(items: RecentItem[], nextCursor?: string | null
   let tail: string;
   if (nextCursor == null) {
     tail = `\n\n(end of feed — nothing older)`;
-  } else if (/^[A-Za-z0-9_=-]{1,512}$/.test(nextCursor)) {
+  } else if (typeof nextCursor === "string" && CURSOR_RE.test(nextCursor)) {
     tail = `\n\nMore older entries exist — pass cursor: ${nextCursor}`;
   } else {
     tail = `\n\nMore entries exist but the continuation token could not be displayed — narrow the window with since/until instead`;
