@@ -1005,9 +1005,14 @@ describe("the load-bearing sentences, as returned", () => {
   it("a truncated read recommends only the control that works — no top_k advice", async () => {
     // Overflow the 96K-char cap so capResult appends its notice: 30 items of
     // ~4000 chars each render well past MAX_RESULT_CHARS.
+    // `domain` on every item since S4: memory_read's item guard treats a
+    // missing domain as an unreadable body (core sends it on every item), and
+    // that case is pinned in test/read-structured.test.ts; this case is about
+    // the truncation wording, so its items carry the field.
     const items = Array.from({ length: 30 }, (_, i) => ({
       atom_id: `atom_${i}`,
       content: "x".repeat(4000),
+      domain: "general",
     }));
     mcp.on(READ, { items, search_time_ms: 12 });
 
@@ -1902,6 +1907,9 @@ describe("a field with the wrong wire type costs that field, not the tool call",
     const items = Array.from({ length: 50 }, (_, i) => ({
       atom_id: `atom_${i}`,
       content: `note ${i}`,
+      // `domain` since S4: the item guard needs it on every item; the subject
+      // of this case is item 7's mistyped provenance, not a missing field.
+      domain: "general",
       // Item 7 is the hostile/buggy connector: `agent_name` typed as a string,
       // sent as a number.
       ...(i === 7 ? { provenance: { agent_name: 12345, is_external: true } } : {}),

@@ -185,6 +185,37 @@ git history and the GitHub releases are the record.
   unreadable-answer error (`isError`), because core sends `atom_id` on
   every stored write, so a body without one is not core's answer and there
   is no honest `memory_id` to return for it.
+- **`memory_read` declares an output schema and returns `structuredContent`
+  alongside its unchanged text.** A client that reads structured tool
+  results now gets `{items: [{memory_id, content, domain, created_at?,
+  author?}]}` as data instead of parsing the numbered lines. `author` is the
+  writing agent's sanitised name only (`sigma`, or `sigma · external` for a
+  connector outside this account), never the human `principal`, even though
+  core's response carries it. `created_at` appears only when core sent a
+  string that parses as a date; a wrong-typed one (a number, say) or an
+  unparseable string is dropped rather than guessed at, the rule
+  `formatDateTag` already applies to the text. A value that states its
+  offset (`Z` or `+hh:mm`) is carried exactly as sent; an offset-less
+  one, which this package reads as UTC by contract, is re-emitted as the
+  UTC ISO-8601 instant the text renders, because a structured consumer
+  would otherwise read the naive string as local time and land on a
+  different instant than the text shows. `content` is carried exactly as core sent it, with no
+  cap and no normalisation: unlike the text, which `capResult` truncates for
+  the 25K-token result-size limit, `structuredContent` is not capped
+  anywhere else in this package either, so a capped page still carries every
+  item in `structuredContent`. `memory_id` is validated as a plain string,
+  not a UUID, for the same reason as `memory_write`'s (decision OD-7): this
+  package's ids are opaque, nothing in the contract promises they are UUIDs,
+  and a stricter check would turn any future id-format change into a
+  whole-page "Output validation error" instead of a value this client
+  simply could not shape-check further. The text a caller already reads
+  does not change, with one exception: an item missing a string `atom_id`,
+  `content` or `domain` used to degrade gracefully: the line simply omitted
+  the missing part (no id line, no domain tag, or literal `(empty)` for
+  content). The WHOLE answer is now the unreadable-answer error instead,
+  because core's `MemoryItemSchema` always sends all three, so an item
+  missing one is not core's answer and there is no honest `structuredContent`
+  item to build from it.
 
 ### Fixed
 

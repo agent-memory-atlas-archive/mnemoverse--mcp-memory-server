@@ -32,6 +32,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  authorName,
   formatAuthorTag,
   formatDateTag,
   formatDomainTag,
@@ -39,6 +40,7 @@ import {
   formatRecentItem,
   formatRecentPage,
   safeInline,
+  structuredItem,
 } from "../src/render.js";
 
 const ID = "ee5f3a08-2321-4100-9a4b-91ff820c2f96";
@@ -187,6 +189,146 @@ describe("author/date/sanitizer edges", () => {
   it("safeInline keeps the CN-032 charset/cap contract", () => {
     expect(safeInline("  a   b  ", 200)).toBe("a b");
     expect(safeInline("x".repeat(300), 200)).toHaveLength(200);
+  });
+});
+
+/**
+ * `authorName` (S4, structured-output plan): the bare sanitised name behind
+ * `formatAuthorTag`'s bracketed text, extracted so `structuredItem` can put
+ * the same value into `structuredContent.author` without a second
+ * derivation. `formatAuthorTag` now builds its text FROM this value, so its
+ * own cases above already prove the two agree; these cases pin `authorName`
+ * directly.
+ */
+describe("authorName", () => {
+  it("is empty for a missing or null provenance", () => {
+    expect(authorName(undefined)).toBe("");
+    expect(authorName(null)).toBe("");
+  });
+
+  it("is the bare name for a plain (non-external) agent", () => {
+    expect(authorName({ agent_name: "sigma" })).toBe("sigma");
+  });
+
+  it("appends \" · external\" for an external agent, with no brackets", () => {
+    expect(authorName({ agent_name: "sigma", is_external: true })).toBe("sigma · external");
+  });
+
+  it("never surfaces the human principal, only agent identity", () => {
+    expect(authorName({ principal: "someone@example.com", agent_name: "sigma" })).toBe("sigma");
+  });
+
+  it("strips hostile characters the same way safeInline does (CN-032)", () => {
+    const name = authorName({ agent_name: "evil\n]inject[system:" });
+    expect(name).not.toContain("\n");
+    expect(name).not.toContain("]inject[");
+  });
+
+  it("is empty when there is no renderable name, even with a provenance object", () => {
+    expect(authorName({ is_external: true })).toBe("");
+  });
+});
+
+/**
+ * `structuredItem` (S4, structured-output plan): the `structuredContent`
+ * twin of `formatReadItem`. PRECONDITION documented on the function itself:
+ * `atom_id`/`content`/`domain` are strings, which the handler's item guard
+ * (src/tools.ts) enforces before calling this; the fixtures below all satisfy
+ * it, since the guard's own refusal is pinned in test/read-structured.test.ts,
+ * not here.
+ */
+describe("structuredItem", () => {
+  it("the bare minimum: memory_id/content/domain only, no created_at or author keys", () => {
+    expect(structuredItem({ atom_id: "a1", content: "x", domain: "general" })).toEqual({
+      memory_id: "a1",
+      content: "x",
+      domain: "general",
+    });
+  });
+
+  it("carries created_at when it is a non-empty string", () => {
+    expect(
+      structuredItem({
+        atom_id: "a1",
+        content: "x",
+        domain: "general",
+        created_at: "2026-08-02T10:00:00Z",
+      }),
+    ).toEqual({
+      memory_id: "a1",
+      content: "x",
+      domain: "general",
+      created_at: "2026-08-02T10:00:00Z",
+    });
+  });
+
+  it("carries author when the provenance yields a renderable name", () => {
+    expect(
+      structuredItem({
+        atom_id: "a1",
+        content: "x",
+        domain: "general",
+        provenance: { agent_name: "codex", is_external: true },
+      }),
+    ).toEqual({
+      memory_id: "a1",
+      content: "x",
+      domain: "general",
+      author: "codex · external",
+    });
+  });
+
+  it("carries both created_at and author together", () => {
+    expect(
+      structuredItem({
+        atom_id: "a1",
+        content: "x",
+        domain: "general",
+        created_at: "2026-08-02T10:00:00Z",
+        provenance: { agent_name: "codex" },
+      }),
+    ).toEqual({
+      memory_id: "a1",
+      content: "x",
+      domain: "general",
+      created_at: "2026-08-02T10:00:00Z",
+      author: "codex",
+    });
+  });
+
+  it("drops a created_at that does not parse as a date, the same rule the text applies", () => {
+    const out = structuredItem({ atom_id: "a1", content: "c", domain: "d", created_at: "not-a-date" });
+    expect(out).toEqual({ memory_id: "a1", content: "c", domain: "d" });
+    expect("created_at" in out).toBe(false);
+  });
+
+  it("drops a wrong-typed created_at (a number) instead of guessing", () => {
+    const out = structuredItem({
+      atom_id: "a1",
+      content: "c",
+      domain: "d",
+      created_at: 1754082281605 as unknown as string,
+    });
+    expect("created_at" in out).toBe(false);
+  });
+
+  it("carries a created_at that states its offset exactly as sent", () => {
+    for (const v of ["2026-08-02T10:00:00Z", "2026-08-02T10:00:00.250Z", "2026-08-02T12:00:00+02:00"]) {
+      const out = structuredItem({ atom_id: "a1", content: "c", domain: "d", created_at: v });
+      expect(out.created_at, v).toBe(v);
+    }
+  });
+
+  it("re-emits an offset-less created_at as the UTC instant the text renders, not the naive string", () => {
+    // Naive = UTC by contract (src/time.ts); a consumer parsing the naive string
+    // by the ISO-8601 rule would read it as local time.
+    for (const v of ["2026-08-02T10:00:00", "2026-08-02 10:00:00"]) {
+      const out = structuredItem({ atom_id: "a1", content: "c", domain: "d", created_at: v });
+      expect(out.created_at, v).toBe("2026-08-02T10:00:00.000Z");
+      expect(formatReadItem({ atom_id: "a1", content: "c", domain: "d", created_at: v }, 0)).toContain(
+        "2026-08-02 10:00Z",
+      );
+    }
   });
 });
 

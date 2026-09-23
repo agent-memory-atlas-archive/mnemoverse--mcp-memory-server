@@ -12,7 +12,7 @@
  */
 
 import { MAX_DOMAIN_TAG_LITERAL, exactLiteral } from "./names.js";
-import { parseAsUtc } from "./time.js";
+import { parseAsUtc, utcInstant } from "./time.js";
 
 /** CN-001 server-stamped authorship, as returned nested on read/feed items. */
 export type Provenance = {
@@ -90,15 +90,31 @@ export function safeInline(s: unknown, cap = 200): string {
 }
 
 /**
- * ` [by X]` / ` [by X · external]` — agent identity only, never the human
- * `principal` (may be an email / PII), even though the response carries it.
+ * "X" / "X · external": agent identity only, never the human `principal`
+ * (may be an email / PII), even though the response carries it. Empty string
+ * when there is no renderable name.
+ *
+ * Extracted from `formatAuthorTag` (S4, structured-output plan) so
+ * `structuredItem` below can put the same sanitised name into
+ * `structuredContent.author` without re-deriving it, and so the two never
+ * drift: `formatAuthorTag` now builds its bracketed text FROM this value
+ * rather than computing its own copy.
  */
-export function formatAuthorTag(p?: Provenance | null): string {
+export function authorName(p?: Provenance | null): string {
   if (!p) return "";
   const raw = p.agent_name || p.agent || p.client_env || "";
   const who = safeInline(raw, 64);
   if (!who) return "";
-  return p.is_external ? ` [by ${who} · external]` : ` [by ${who}]`;
+  return p.is_external ? `${who} · external` : who;
+}
+
+/**
+ * ` [by X]` / ` [by X · external]` — agent identity only, never the human
+ * `principal` (may be an email / PII), even though the response carries it.
+ */
+export function formatAuthorTag(p?: Provenance | null): string {
+  const who = authorName(p);
+  return who ? ` [by ${who}]` : "";
 }
 
 /**
@@ -201,6 +217,52 @@ export function formatReadItem(item: ReadItem, index: number): string {
     item?.domain,
   )}${formatAuthorTag(item?.provenance)}${formatDateTag(item?.created_at)}`;
   return item?.atom_id ? `${head}\n   id: ${item.atom_id}` : head;
+}
+
+/**
+ * The `structuredContent` twin of {@link formatReadItem} (S4, structured-output
+ * plan): the same item, shaped for memory_read's `outputSchema` instead of for
+ * a line of text.
+ *
+ * PRECONDITION, enforced by the caller (src/tools.ts) before this is ever
+ * invoked: `item.atom_id`, `item.content` and `item.domain` are all strings.
+ * core's MemoryItemSchema sends all three on every item; a response that
+ * doesn't is caught by the handler's item guard and answered with
+ * `unreadableAnswerReply` before `structuredItem` is reached, so the casts
+ * below are a documented precondition, not a runtime assumption made here.
+ *
+ * `content` is carried EXACTLY, uncapped and unnormalised (decision OD-11,
+ * owner, 2026-09-23): unlike the text line, which goes through `capResult`
+ * for the 25K-token result-size cap, `structuredContent` is not capped
+ * anywhere else in this package either (memory_write's `reason` is the only
+ * normalised structured field, and that's control/bidi/zero-width hygiene on
+ * a diagnostic string, not a length cap on the memory itself); a client
+ * reading structured data reads `content` as the stored memory, and a
+ * silently shorter value there would be a different kind of lie than a
+ * truncated text block with a notice at the end.
+ */
+export function structuredItem(item: ReadItem): {
+  memory_id: string;
+  content: string;
+  domain: string;
+  created_at?: string;
+  author?: string;
+} {
+  const author = authorName(item.provenance);
+  const created = utcInstant(item.created_at);
+  return {
+    memory_id: item.atom_id as string,
+    content: item.content as string,
+    domain: item.domain as string,
+    // The rule the text already applies through formatDateTag: a value that
+    // does not parse as a date is no creation instant, whatever its type, and
+    // the field promises a UTC ISO-8601 instant. A value that states its
+    // offset is carried as sent; an offset-less one (UTC by contract) is
+    // re-emitted as the UTC instant the text renders, since a consumer
+    // would otherwise read it as local time (src/time.ts, utcInstant).
+    ...(created !== null ? { created_at: created } : {}),
+    ...(author ? { author } : {}),
+  };
 }
 
 /**
