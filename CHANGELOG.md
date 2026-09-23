@@ -58,6 +58,55 @@ git history and the GitHub releases are the record.
 
 ### Added
 
+- **`memory_create_room`, `memory_invite_to_room` and `memory_join_room` declare
+  output schemas and return `structuredContent` alongside their unchanged text.**
+  `memory_create_room` returns `{room_id, address, name?}`; `memory_invite_to_room`
+  returns `{share_message, join_url?, code?, scope?, room_address?, expires_at?}`;
+  `memory_join_room` returns `{room_id, address, name?, scope?, already_member?,
+  next_steps}`. Field names and descriptions are copied from the connector's own
+  `roomCreatedOutput`/`roomInviteOutput`/`roomJoinedOutput` (mnemoverse-mcp-remote),
+  field for field and description for description.
+  **OD-13** (owner, 2026-09-23): several fields the connector marks required are
+  OPTIONAL here instead: `name` on create and join, `scope`/`already_member` on
+  join, and `code`/`scope`/`room_address`/`expires_at` on invite. The connector's
+  core client types those fields as always-present; this package treats every
+  wire value as untyped and already has a non-degraded three-state phrase for a
+  room name core did not send and for a join whose scope core did not report, so
+  "core sent no usable value for this field" is an existing, honestly
+  representable outcome here rather than an error, and the schema says so by
+  making the field optional rather than forcing a fabricated placeholder into a
+  field declared required. `join_url` and `share_message` on invite are the one
+  exception with a different shape: `share_message` is the field guaranteed
+  present, and it is the SAME message the text forwards (one selection feeds
+  both surfaces: core's own share_message when the body has one, else
+  `join_url`), normalised through `structuredText`; `join_url` itself stays
+  optional, carried through `safeInline` with the connector's cap of 400 and
+  present only when something remains.
+  **`next_steps`** in `memory_join_room`'s structuredContent is the SAME usage
+  sentence the text already prints, never core's own `next_steps` field; that
+  field is written for REST callers and is deliberately not echoed (see the
+  comment above `memory_create_room` in src/tools.ts).
+  **Caps**: room `name` is capped at 200 characters, `share_message` at 800,
+  through `structuredText` (src/names.ts), the same control/bidi/zero-width
+  normalization `memory_write`'s `reason` field already gets.
+  **Three existing text-only degrade replies now carry `isError: true`**, text
+  unchanged. `memory_create_room`'s "Room ... was created but the server did not
+  return a usable address" and `memory_join_room`'s "The server did not return a
+  room address" both previously described a missing `address` only; the gate
+  now also fires on a missing/non-string `room_id` (core's schemas require both
+  on every create and join), and the sentence still speaks only of "address" in
+  either case, since a caller cannot tell from the outside which of the two
+  fields core actually omitted. `memory_invite_to_room`'s reply for a body
+  with no forwardable message (the "(no message returned)" sentence when the
+  body has neither `share_message` nor `join_url`, or the blank the text
+  already printed for a `share_message` that is present but empty,
+  whitespace-only or not a string) is the third: same text, `isError: true`,
+  since there is no honest `share_message` to put in the data.
+  **`structuredContent.name` on `memory_create_room` comes from the response
+  only.** The text keeps echoing the name the caller chose when core's body
+  omits one; the data does not, because the schema says "as stored" and a
+  body without `name` is no evidence of what core stored.
+
 - **`memory_stats` declares an output schema and returns `structuredContent`
   alongside its unchanged text.** A client that reads structured tool results
   now gets `{memory_count, domains, episodes?, prototypes?, hebbian_edges?,

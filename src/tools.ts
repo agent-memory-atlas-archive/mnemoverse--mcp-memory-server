@@ -52,6 +52,9 @@ import {
 import { ApiError } from "./errors.js";
 // Field limits, generated from core's contract (src/limits.ts, ADR-025).
 import { CORE_LIMITS } from "./limits.js";
+// For the invite's `expires_at` (S8, structured-output plan): the same
+// UTC-instant reader src/render.ts uses for a memory's `created_at`.
+import { utcInstant } from "./time.js";
 
 /**
  * How the tools reach the Mnemoverse API: send `path` (relative to the API base,
@@ -2057,6 +2060,34 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
   // through roomNamePhrase (CN-032). The usage lines below say the same
   // things in MCP terms, scope-gated on join.
 
+  // OUTPUT SCHEMAS for the three room tools (S8, structured-output plan):
+  // `room_id`/`address`/`room_address`/`scope` copied from the connector's
+  // `roomCreatedOutput`/`roomInviteOutput`/`roomJoinedOutput`
+  // (mnemoverse-mcp-remote, src/tools/index.ts), field for field and
+  // description for description.
+  //
+  // OD-13 (owner, 2026-09-23): several fields the connector marks required
+  // are OPTIONAL here: `name` on create and join, `scope`/`already_member`
+  // on join, and `code`/`scope`/`room_address`/`expires_at` on invite. The
+  // connector's own core client types those fields as always-present; this
+  // package treats every wire value as untyped (the general rule this whole
+  // file follows) and already has a non-degraded THREE-state phrase for a
+  // room name core did not send (`roomNamePhrase`) and for a join whose
+  // scope core did not report (`roomScopeVerdict`'s "unspecified" arm), so
+  // "core sent no usable value for this field" is an existing, honestly
+  // representable outcome here, not an error, and the schema says so by
+  // making the field optional rather than forcing a fabricated placeholder
+  // into a field declared required.
+  //
+  // `join_url`/`share_message` on invite stay as today: at least one of the
+  // two must be usable or the call is `isError` (unchanged from before this
+  // schema existed), so `share_message` is the one guaranteed field, built
+  // from the SAME fallback the text already prints (share_message when core
+  // sent one, else join_url), and `join_url` itself is optional, present
+  // only when core actually returned a string for it.
+
+  // --- Tool: memory_create_room ---
+
   server.registerTool(
     "memory_create_room",
     {
@@ -2075,6 +2106,15 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           .max(CORE_LIMITS.roomDescription.maxLength)
           .optional()
           .describe("Optional description of the room."),
+      },
+      outputSchema: {
+        room_id: z
+          .string()
+          .describe("The room's id (room_...); pass to memory_invite_to_room."),
+        address: z
+          .string()
+          .describe("Domain address (xroom:<id>); pass as `domain` on read/write."),
+        name: z.string().optional().describe("The room name as stored."),
       },
       annotations: {
         title: "Create shared room",
@@ -2103,26 +2143,50 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       const roomId = safeInline(r?.room_id);
       // If core returned no usable id (empty body / sanitized away), don't print
       // broken `domain=""` guidance — say so instead (Copilot).
-      const text = address
-        ? `Created shared room ${roomName}. Address: ${address}\n` +
-          `Use it now: pass domain="${address}" on memory_write / memory_read, and on memory_list_recent to catch up on what others added.\n` +
-          (roomId
-            ? `To add someone: call memory_invite_to_room with room_id="${roomId}".`
-            : "")
-        : `Room ${roomName} was created but the server did not return a usable address — ` +
-          `retry, or check that your API key is set.`;
-      return {
-        content: [
-          {
-            type: "text" as const,
-            // Legend AFTER the cap (same rule as memory_read/memory_list_recent):
-            // capResult cuts from the end, so a legend applied first would be the
-            // first casualty; applied to the capped text it also drops itself when
-            // the cap removed the only escaped name.
-            text: withDomainEscapeLegend(capResult(text), rawName),
-          },
-        ],
-      };
+      //
+      // GATE (S8-1, owner, 2026-09-23): core's RoomCreatedSchema sends
+      // room_id alongside address on every create, so `roomId` now joins
+      // `address` in the condition that picks this branch: a body missing
+      // a usable one of either is not core's answer, the same class of
+      // unreadable 2xx this file already refuses rather than describes.
+      const text =
+        address && roomId
+          ? `Created shared room ${roomName}. Address: ${address}\n` +
+            `Use it now: pass domain="${address}" on memory_write / memory_read, and on memory_list_recent to catch up on what others added.\n` +
+            (roomId
+              ? `To add someone: call memory_invite_to_room with room_id="${roomId}".`
+              : "")
+          : `Room ${roomName} was created but the server did not return a usable address — ` +
+            `retry, or check that your API key is set.`;
+      // Legend AFTER the cap (same rule as memory_read/memory_list_recent):
+      // capResult cuts from the end, so a legend applied first would be the
+      // first casualty; applied to the capped text it also drops itself when
+      // the cap removed the only escaped name.
+      const finalText = withDomainEscapeLegend(capResult(text), rawName);
+      // Same gate as the text above: no usable address or no usable room_id
+      // is not core's answer, and there is no honest structuredContent for
+      // it either. The existing degrade sentence is the whole reply now,
+      // with isError: true, instead of a 200-shaped "success" with nothing
+      // a caller can act on.
+      if (!address || !roomId) {
+        return {
+          content: [{ type: "text" as const, text: finalText }],
+          isError: true as const,
+        };
+      }
+      // STRUCTURED `name` comes from the RESPONSE only, never from the
+      // request's `name` the text above falls back to: the schema says "as
+      // stored", and a body that omits `name` gives this client no evidence
+      // of what core stored, so the key is absent rather than an echo of the
+      // caller's own spelling dressed up as core's answer (Copilot, review
+      // round 2). The text keeps its fallback: it is written for the caller
+      // who chose the name and stays byte-identical.
+      const nameStructured = structuredText(r?.name, 200);
+      return structured(finalText, {
+        room_id: roomId,
+        address,
+        ...(nameStructured === undefined ? {} : { name: nameStructured }),
+      });
     },
   );
 
@@ -2164,6 +2228,22 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           .optional()
           .describe("How many people may join with this invite (default 1, single-use)."),
       },
+      outputSchema: {
+        share_message: z.string().describe("Ready-to-forward invite text."),
+        join_url: z.string().optional().describe("Landing URL the invitee can open to join."),
+        code: z
+          .string()
+          .optional()
+          .describe(
+            "The invite code (mnvr_...). Single-use by default, with a configurable use limit. Shown once.",
+          ),
+        scope: z.string().optional().describe("Role the invitee will get."),
+        room_address: z
+          .string()
+          .optional()
+          .describe("The room's domain address (xroom:<id>)."),
+        expires_at: z.string().nullable().optional().describe("ISO 8601 expiry, or null."),
+      },
       annotations: {
         title: "Invite to room",
         readOnlyHint: false,
@@ -2179,24 +2259,72 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         share_message?: string;
         join_url?: string;
         code?: string;
+        scope?: string;
+        room_address?: string;
+        expires_at?: string | null;
       }>(`/memory/rooms/${encodeURIComponent(room_id)}/invites`, {
         method: "POST",
         body: JSON.stringify({ scope, expires_in_days, max_uses }),
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            // Shown to the room OWNER (who minted it), not a foreign principal, so
-            // the core-generated share_message is fine as-is; capResult only bounds
-            // its length for the Connectors-Directory 25K cap.
-            text: capResult(
-              `Invite ready. Forward this message to the person you're inviting:\n\n` +
-                `${r?.share_message ?? r?.join_url ?? "(no message returned)"}`,
-            ),
-          },
-        ],
-      };
+      // ONE selection feeds both surfaces (Copilot, review round 2): the
+      // message the text forwards is core's share_message when the body has
+      // one (its raw value, exactly as before this schema existed), else
+      // join_url, else the "(no message returned)" sentence.
+      const rawMessage = r?.share_message ?? r?.join_url;
+      const text = capResult(
+        `Invite ready. Forward this message to the person you're inviting:\n\n` +
+          `${rawMessage ?? "(no message returned)"}`,
+      );
+      // Shown to the room OWNER (who minted it), not a foreign principal, so
+      // the core-generated share_message is fine as-is; capResult only bounds
+      // its length for the Connectors-Directory 25K cap. STRUCTURED
+      // `share_message` (S8-4, owner, 2026-09-23) is that SAME selected
+      // value, normalised through structuredText, so the data never carries
+      // a message the text did not show. A selected value that normalises to
+      // nothing (no share_message and no join_url, or a share_message that is
+      // empty, whitespace-only or not a string at all) is not this tool's
+      // success case any more: the text above is unchanged (the blank or the
+      // "(no message returned)" sentence, as before) and the reply is
+      // isError: true, since there is no honest
+      // structuredContent.share_message to pair it with.
+      const shareMessageStructured = structuredText(rawMessage, 800);
+      if (shareMessageStructured === undefined) {
+        return { content: [{ type: "text" as const, text }], isError: true as const };
+      }
+      // `join_url` through safeInline with the connector's own cap of 400,
+      // as the connector does (mnemoverse-mcp-remote, memory_invite_to_room):
+      // core builds it as `<base>/<code>`, which safeInline's character class
+      // carries unchanged; anything else it would have to alter is not a URL
+      // this client should hand on as one. Absent when nothing remains.
+      const joinUrlSafe = safeInline(r?.join_url, 400);
+      const joinUrlStructured = joinUrlSafe === "" ? undefined : joinUrlSafe;
+      // The other machine fields the same way: safeInline returns "" for a
+      // non-string, an empty string and a string with nothing it may keep,
+      // and "" is not a usable code, scope or address, so the key is absent
+      // (CodeRabbit, review round 2). Present only when something remains.
+      const codeSafe = safeInline(r?.code);
+      const codeStructured = codeSafe === "" ? undefined : codeSafe;
+      const scopeSafe = safeInline(r?.scope);
+      const scopeStructured = scopeSafe === "" ? undefined : scopeSafe;
+      const roomAddressSafe = safeInline(r?.room_address);
+      const roomAddressStructured = roomAddressSafe === "" ? undefined : roomAddressSafe;
+      // `expires_at` through utcInstant's RETURN, the rule memory_read's
+      // `created_at` already follows (S4): a value that states its offset is
+      // carried exactly as sent, an offset-less one, which this package reads
+      // as UTC by contract, is re-emitted as the UTC ISO-8601 instant, so a
+      // structured consumer lands on the instant this client used rather than
+      // reading the naive string as local time (CodeRabbit, review round 2).
+      // `null` when core sent null; absent when the value does not parse.
+      const expiresAtStructured =
+        r?.expires_at === null ? null : (utcInstant(r?.expires_at) ?? undefined);
+      return structured(text, {
+        share_message: shareMessageStructured,
+        ...(joinUrlStructured === undefined ? {} : { join_url: joinUrlStructured }),
+        ...(codeStructured === undefined ? {} : { code: codeStructured }),
+        ...(scopeStructured === undefined ? {} : { scope: scopeStructured }),
+        ...(roomAddressStructured === undefined ? {} : { room_address: roomAddressStructured }),
+        ...(expiresAtStructured === undefined ? {} : { expires_at: expiresAtStructured }),
+      });
     },
   );
 
@@ -2210,6 +2338,19 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       inputSchema: {
         code: z.string().min(1).max(200).describe("The invite code (mnvr_...)."),
       },
+      outputSchema: {
+        room_id: z.string().describe("The room's id (room_...)."),
+        address: z
+          .string()
+          .describe("Domain address (xroom:<id>); pass as `domain` on read/write."),
+        name: z.string().optional().describe("The room name."),
+        scope: z.string().optional().describe("Your role in the room ('read' | 'read_write')."),
+        already_member: z
+          .boolean()
+          .optional()
+          .describe("True if you were already a member (no-op join)."),
+        next_steps: z.string().describe("How to use the room now."),
+      },
       annotations: {
         title: "Join room",
         readOnlyHint: false,
@@ -2220,6 +2361,7 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
     },
     async ({ code }) => {
       const r = await apiFetch<{
+        room_id?: string;
         address?: string;
         name?: string;
         scope?: string;
@@ -2237,6 +2379,7 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       const roomName = roomNamePhrase(r?.name);
       const scope = safeInline(r?.scope) || "member";
       const address = safeInline(r?.address);
+      const roomId = safeInline(r?.room_id);
       const prefix = r?.already_member
         ? `You're already a member of ${roomName}.`
         : `Joined ${roomName} (${scope}).`;
@@ -2245,23 +2388,66 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // isRoomDomain): a "read" invite gets told memory_write will be refused
       // rather than offered it, and a scope the response did not report at all
       // gets no promise about write either way.
+      //
+      // GATE (S8-2, mirrors create's S8-1, owner, 2026-09-23): core's
+      // JoinedRoomSchema sends room_id alongside address on every join, so
+      // `roomId` now joins `address` in the condition that picks this
+      // sentence: same wording as before (it still names only "address" -
+      // the caller cannot tell which of the two core actually omitted, and a
+      // second sentence for a case indistinguishable from this one would be
+      // a distinction this client cannot see either).
       const verdict = roomScopeVerdict(r?.scope);
-      const usage = !address
-        ? `The server did not return a room address — retry, or check that your API key is set.`
-        : verdict === "read_write"
-          ? `Use it: pass domain="${address}" on memory_write / memory_read to read and write the shared room, and on memory_list_recent to catch up on what is new.`
-          : verdict === "read"
-            ? `Use it: pass domain="${address}" on memory_read or memory_list_recent to read it; this membership is read-only, so memory_write to that address will be refused.`
-            : `Use it: pass domain="${address}" on memory_read or memory_list_recent to read it — the server did not report this membership's write access, so whether memory_write to that address would succeed is unknown.`;
-      return {
-        content: [
-          {
-            type: "text" as const,
-            // Legend after the cap — same ordering rule as everywhere else.
-            text: withDomainEscapeLegend(capResult(`${prefix}\n${usage}`), r?.name),
-          },
-        ],
-      };
+      const usage =
+        !address || !roomId
+          ? `The server did not return a room address — retry, or check that your API key is set.`
+          : verdict === "read_write"
+            ? `Use it: pass domain="${address}" on memory_write / memory_read to read and write the shared room, and on memory_list_recent to catch up on what is new.`
+            : verdict === "read"
+              ? `Use it: pass domain="${address}" on memory_read or memory_list_recent to read it; this membership is read-only, so memory_write to that address will be refused.`
+              : `Use it: pass domain="${address}" on memory_read or memory_list_recent to read it — the server did not report this membership's write access, so whether memory_write to that address would succeed is unknown.`;
+      // No usable address or room_id: the reply is the same text as before
+      // this schema existed (the prefix line plus the degrade sentence), now
+      // isError: true, since there is no honest structuredContent for a join
+      // whose room this client cannot address. The text stays byte-identical
+      // on purpose: whether this reply should stop saying "Joined" is a
+      // wording decision for the owner, not for this slice.
+      if (!address || !roomId) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: withDomainEscapeLegend(capResult(`${prefix}\n${usage}`), r?.name),
+            },
+          ],
+          isError: true as const,
+        };
+      }
+      const nameStructured = structuredText(r?.name, 200);
+      // STRUCTURED `next_steps` (S8-6, owner, 2026-09-23) is this SAME usage
+      // sentence, never core's own `next_steps`: that field points at REST
+      // endpoints and is deliberately not echoed (see the comment above
+      // memory_create_room). `?? usage` is a defensive fallback for the
+      // unreachable case where structuredText would normalise `usage` to
+      // nothing; it is built from safe, already-sanitised parts and never
+      // actually empties.
+      const nextStepsStructured = structuredText(usage, 500) ?? usage;
+      // `scope` absent when safeInline leaves nothing, as on invite.
+      const scopeSafe = safeInline(r?.scope);
+      const scopeStructured = scopeSafe === "" ? undefined : scopeSafe;
+      return structured(
+        // Legend after the cap, same ordering rule as everywhere else.
+        withDomainEscapeLegend(capResult(`${prefix}\n${usage}`), r?.name),
+        {
+          room_id: roomId,
+          address,
+          ...(nameStructured === undefined ? {} : { name: nameStructured }),
+          ...(scopeStructured === undefined ? {} : { scope: scopeStructured }),
+          ...(typeof r?.already_member === "boolean"
+            ? { already_member: r.already_member }
+            : {}),
+          next_steps: nextStepsStructured,
+        },
+      );
     },
   );
 
