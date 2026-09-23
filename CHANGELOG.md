@@ -33,7 +33,11 @@ the old and the new name) and lands only in the announced version. A renamed
 parameter is accepted under both names until then, and a renamed annotation
 field is declared under both names until then, since a MINOR may add a field but
 not remove one. (Parameters were added to this rule on 2026-09-21, with the
-first parameter rename, so that it and the README say the same thing.) `tools/list` is therefore frozen per released version, and
+first parameter rename, so that it and the README say the same thing.) A MINOR
+may also add an output schema (`outputSchema`, with `structuredContent`
+returned alongside the same text) to a tool that did not have one; once
+declared, that schema's fields are add-only under this same rule. `tools/list`
+is therefore frozen per released version, and
 two servers of one version that differ are a bug. The README section "Tool
 surface stability" is the reader-facing statement of the same rule.
 
@@ -163,6 +167,24 @@ git history and the GitHub releases are the record.
   not revive a stuck session; reconnect from inside it (`/mcp` in Claude
   Code). Meanwhile this local server, with a key from the same account,
   reaches the same memory.
+- **`memory_write` declares an output schema and returns `structuredContent`
+  alongside its unchanged text.** A client that reads structured tool
+  results now gets `{stored, memory_id, reason?, importance?}` as data
+  instead of parsing the sentence. `reason` (capped at 400 characters, and
+  absent when nothing remains after normalisation) and `importance` (a
+  non-finite number, which JSON can carry as `1e400`, counts as not sent)
+  appear only when the memory service actually sent them; nothing is
+  defaulted or fabricated for an older core that omits either. `memory_id` is validated
+  as a plain string, not a UUID: this package's ids are opaque, nothing in
+  the contract promises they are UUIDs, and a stricter check would turn any
+  future id-format change into a whole-page "Output validation error"
+  instead of a value this client simply could not shape-check further. The
+  text a caller already reads does not change, with one exception: a
+  `stored: true` body that carries no string `atom_id` used to print
+  `Stored (importance: N). ID: unknown` as a success; it is now the
+  unreadable-answer error (`isError`), because core sends `atom_id` on
+  every stored write, so a body without one is not core's answer and there
+  is no honest `memory_id` to return for it.
 
 ### Fixed
 
