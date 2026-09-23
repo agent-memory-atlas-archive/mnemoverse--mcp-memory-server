@@ -1481,6 +1481,40 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
             "Only for memories read from a shared room: that room's address (xroom:...), exactly as you read it. Omit it for your own memories, which are rated by id alone.",
           ),
       },
+      // Copied from the connector's `memoryFeedbackOutput` (mnemoverse-mcp-remote,
+      // src/tools/index.ts), field for field and description for description,
+      // with one noun changed: the connector's `coactivation_edges` text says
+      // "This connector does not send query_concepts"; here it says "This
+      // server", since the fact holds for this tool's own request body (the
+      // POST above carries only atom_ids, outcome and domain) and the noun was
+      // wrong for a local stdio server. `updated_count` is required, matching both the connector's
+      // schema and core's FeedbackResponseSchema (decision OD-8, owner,
+      // 2026-09-23): a body without a usable count is not core's answer. See
+      // the unknown-count branch below, which is `isError` for exactly that
+      // reason, since there is no honest default to declare for it here.
+      outputSchema: {
+        updated_count: z
+          .number()
+          .int()
+          .nonnegative()
+          .describe(
+            "How many memories the service reports it applied the rating to. Processed synchronously this is the real count of memories that existed and were updated; processed asynchronously it is a best-effort ACCEPTED-count estimate — the number of IDs submitted — and the authoritative number is not known until the background worker runs. Zero means no submitted ID matched in the service's resolved request scope.",
+          ),
+        avg_valence: z
+          .number()
+          .optional()
+          .describe(
+            "Average valence of the rated memories after the update. Reported as 0 in an asynchronous acknowledgement, where the real value is computed later — a 0 here is therefore not evidence of a neutral outcome.",
+          ),
+        coactivation_edges: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe(
+            "Number of feedback-driven query/result concept co-activation edges changed by the service. This is separate from ordinary Hebbian strengthening among a memory's own concepts. This server does not send query_concepts, so live calls through this tool report 0; asynchronous acknowledgements also report 0.",
+          ),
+      },
       annotations: {
         title: "Rate Memory Helpfulness",
         readOnlyHint: false,
@@ -1568,8 +1602,42 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // belong to a reported zero, not to a number we never received.
       const reported: unknown = r?.updated_count;
       const count =
-        typeof reported === "number" && Number.isInteger(reported) && reported >= 0
+        // isSafeInteger, not isInteger: the output schema is z.number().int(),
+        // and zod 4 rejects an integer above 2^53 - 1, so such a count would
+        // turn the whole reply into an SDK validation error (review, 2026-09-23).
+        typeof reported === "number" && Number.isSafeInteger(reported) && reported >= 0
           ? reported
+          : undefined;
+
+      // Structured twin of the text's average-valence clause built further
+      // below (`the service reports their average valence is now …`): the
+      // RAW number, not the two-decimal string. Computed here, ahead of that
+      // clause, because it is also carried on the count===0 branch just
+      // below, which returns before the later clause exists. Same rule as
+      // the text: a value that is not a finite number is unknown and absent
+      // from structuredContent, never defaulted to 0.
+      const avgValenceRaw: unknown = r?.avg_valence;
+      const avgValenceStructured =
+        typeof avgValenceRaw === "number" && Number.isFinite(avgValenceRaw)
+          ? avgValenceRaw
+          : undefined;
+
+      // Structured twin of `coactivation_edges`, left out of the TEXT below
+      // for the reason the comment on `valence` gives (this tool sends no
+      // query_concepts, so the number is always 0 here and a sentence about
+      // it would report nothing) but not out of structuredContent, where the
+      // connector's schema carries it as a genuine data field, on every
+      // path, the count===0 one included (review, 2026-09-23). Forwarded
+      // only when it is a non-negative integer, the shape the schema itself
+      // requires, so a value core could never send in that shape is simply
+      // absent here rather than turning this whole reply into an SDK
+      // "Output validation error".
+      const coactivationRaw: unknown = r?.coactivation_edges;
+      const coactivationEdges =
+        typeof coactivationRaw === "number" &&
+        Number.isSafeInteger(coactivationRaw) &&
+        coactivationRaw >= 0
+          ? coactivationRaw
           : undefined;
 
       // Direction is echoed for every outcome, including the ones with no count
@@ -1602,7 +1670,18 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           : "";
 
       if (count === undefined) {
+        // OD-8 (owner, 2026-09-23): this reply is now `isError`, not a
+        // silent non-error text. Once this tool declares an outputSchema
+        // (S6), the SDK's own `validateToolOutput` (see the comment on
+        // `structured()` above) rejects a non-error result with no
+        // `structuredContent`, and `updated_count` is REQUIRED in that
+        // schema (matching core's own FeedbackResponseSchema), so there is
+        // no honest value to put there for a body that sent none. `isError`
+        // is the one shape the SDK exempts from that check, so it is the
+        // shape this reply takes now. The sentence itself is unchanged,
+        // "do not re-send the same rating" included.
         return {
+          isError: true,
           content: [
             {
               type: "text" as const,
@@ -1629,16 +1708,15 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // telling the caller they were deleted sends them to look for a problem
       // that isn't there. Before 0.11 there was no `domain` to pass at all.
       if (count === 0) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text:
-                "No feedback was recorded — none of those ids matched a memory " +
-                `${feedbackScope(scope)}. ${feedbackMissCauses(scope)}`,
-            },
-          ],
-        };
+        return structured(
+          "No feedback was recorded — none of those ids matched a memory " +
+            `${feedbackScope(scope)}. ${feedbackMissCauses(scope)}`,
+          {
+            updated_count: 0,
+            ...(avgValenceStructured === undefined ? {} : { avg_valence: avgValenceStructured }),
+            ...(coactivationEdges === undefined ? {} : { coactivation_edges: coactivationEdges }),
+          },
+        );
       }
 
       // WHOSE NUMBER THIS IS (#68). `updated_count` is the count of memories the
@@ -1715,18 +1793,18 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           ? ` The service reports their average valence is now ${avg.toFixed(2).replace(/^-0\.00$/, "0.00")} (on a scale from -1 to 1).`
           : "";
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            // Order: what was sent, what the service reported, what that means
-            // for the ids — then the advice. Putting `pickADirection` before the
-            // mismatch clause interrupted the report with a suggestion and
-            // resumed it afterwards.
-            text: `${sent} The service reports ${noun} updated${effect}${valence}${mismatch}${pickADirection}`,
-          },
-        ],
-      };
+      // Order: what was sent, what the service reported, what that means
+      // for the ids — then the advice. Putting `pickADirection` before the
+      // mismatch clause interrupted the report with a suggestion and
+      // resumed it afterwards.
+      return structured(
+        `${sent} The service reports ${noun} updated${effect}${valence}${mismatch}${pickADirection}`,
+        {
+          updated_count: count,
+          ...(avgValenceStructured === undefined ? {} : { avg_valence: avgValenceStructured }),
+          ...(coactivationEdges === undefined ? {} : { coactivation_edges: coactivationEdges }),
+        },
+      );
     },
   );
 
