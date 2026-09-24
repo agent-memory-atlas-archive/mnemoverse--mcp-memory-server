@@ -17,6 +17,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { DOMAIN_ESCAPE_LEGEND } from "../src/names.js";
 import {
   httpError,
   networkDown,
@@ -1338,6 +1339,127 @@ describe("the escape legend survives the size cap", () => {
     expect(feed).not.toContain("[…truncated");
     expect(feed).toContain(ZWSP_LITERAL);
     expect(legends(feed)).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The escape legend fires for an escaped AUTHOR literal too, not just a
+ * domain (I66-1..I66-3, issue #66, owner decisions 2026-09-23/24): the
+ * `[by "…"]` tag now quotes every author name the same way `@domain` does,
+ * so `withDomainEscapeLegend`'s candidate list at the src/tools.ts call
+ * sites for memory_read and memory_list_recent must include author names,
+ * not only domains: a handler-level proof that the plumbing (not just the
+ * render.ts unit) actually wires an escaped author name to the legend.
+ */
+describe("the escape legend cannot be suppressed or faked by an author name (review round 2, issue #66)", () => {
+  it("an author name equal to the legend's own wording does not suppress the legend an escaped domain needs", async () => {
+    mcp.on(READ, {
+      items: [
+        { atom_id: "a1", content: "x", domain: "acme\u00a0", provenance: { agent_name: "sigma" } },
+        {
+          atom_id: "a2",
+          content: "y",
+          domain: "general",
+          provenance: { agent_name: "printed as JSON string literals" },
+        },
+      ],
+      search_time_ms: 3,
+    });
+
+    const text = await mcp.callText("memory_read", { query: "x" });
+
+    expect(text).toContain('@"acme\\u00a0"');
+    expect(text).toContain('[by "printed as JSON string literals"]');
+    // The legends() helper counts the wording, which this author name also
+    // carries; the whole legend paragraph is what must appear exactly once.
+    expect(text.split(DOMAIN_ESCAPE_LEGEND).length - 1).toBe(1);
+  });
+
+  it("an author name too long for the tag earns no legend through its literal appearing in a result's content", async () => {
+    const longName = "\u200b" + "n".repeat(140);
+    const printedLiteral = '"\\u200b' + "n".repeat(140) + '"';
+    mcp.on(READ, {
+      items: [
+        {
+          atom_id: "a1",
+          content: `mentions ${printedLiteral} in passing`,
+          domain: "general",
+          provenance: { agent_name: longName },
+        },
+      ],
+      search_time_ms: 3,
+    });
+
+    const text = await mcp.callText("memory_read", { query: "x" });
+
+    expect(text).toContain("[by (name cannot be printed exactly)]");
+    expect(text).toContain(printedLiteral);
+    expect(legends(text)).toBe(0);
+  });
+});
+
+describe("the escape legend also fires for an escaped author name", () => {
+  const AUTHOR_ZWSP_NAME = "sigma\u200b";
+  const AUTHOR_ZWSP_LITERAL = '"sigma\\u200b"';
+
+  it("memory_read: an escaped author name (no escaped domain) still gets the legend", async () => {
+    mcp.on(READ, {
+      items: [
+        {
+          atom_id: "a1",
+          content: "x",
+          domain: "general",
+          provenance: { agent_name: AUTHOR_ZWSP_NAME },
+        },
+      ],
+      search_time_ms: 3,
+    });
+
+    const text = await mcp.callText("memory_read", { query: "x" });
+
+    expect(text).toContain(AUTHOR_ZWSP_LITERAL);
+    expect(legends(text)).toBe(1);
+  });
+
+  it("memory_list_recent: an escaped author name (no escaped domain) still gets the legend", async () => {
+    mcp.on(RECENT, {
+      items: [
+        {
+          atom_id: "a1",
+          content: "x",
+          domain: "general",
+          provenance: { agent_name: AUTHOR_ZWSP_NAME },
+        },
+      ],
+      next_cursor: null,
+    });
+
+    const text = await mcp.callText("memory_list_recent", {});
+
+    expect(text).toContain(AUTHOR_ZWSP_LITERAL);
+    expect(legends(text)).toBe(1);
+  });
+
+  it("fires at most once when BOTH the domain and the author name are escaped", async () => {
+    mcp.on(READ, {
+      items: [
+        {
+          atom_id: "a1",
+          content: "x",
+          domain: ZWSP_NAME,
+          provenance: { agent_name: AUTHOR_ZWSP_NAME },
+        },
+      ],
+      search_time_ms: 3,
+    });
+
+    const text = await mcp.callText("memory_read", { query: "x" });
+
+    expect(text).toContain(ZWSP_LITERAL);
+    expect(text).toContain(AUTHOR_ZWSP_LITERAL);
+    expect(legends(text)).toBe(1);
   });
 });
 

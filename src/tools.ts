@@ -18,6 +18,7 @@ import {
   CURSOR_RE,
   formatReadItem,
   formatRecentPage,
+  rawAuthorName,
   safeInline,
   structuredItem,
   type ReadItem,
@@ -46,9 +47,11 @@ import {
   exactLiteral,
   formatDomainList,
   MAX_DOMAIN_LITERAL,
+  MAX_DOMAIN_TAG_LITERAL,
   roomNamePhrase,
   structuredText,
   withDomainEscapeLegend,
+  withEscapeLegendAt,
 } from "./names.js";
 import { ApiError } from "./errors.js";
 // Field limits, generated from core's contract (src/limits.ts, ADR-025).
@@ -919,8 +922,21 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // `structuredContent` carries every item, uncapped (OD-11): the cap
       // and its legend are TEXT-side concerns, and `structuredItem`
       // (src/render.ts) is deliberately not run through either.
+      //
+      // Author names are candidates too, not just domains (I66-1..I66-3,
+      // issue #66): the text tag now quotes every author name through the
+      // same `exactLiteral` the `@domain` tag uses, so an escaped one needs
+      // the same "these are JSON string literals" legend an escaped domain
+      // already gets. `rawAuthorName` is the SAME raw value `formatAuthorTag`
+      // quoted, so this recomputation finds the same literal that is
+      // actually on the page.
       return structured(
-        withDomainEscapeLegend(capResult(text), ...items.map((it) => it?.domain)),
+        withEscapeLegendAt(
+          MAX_DOMAIN_TAG_LITERAL,
+          capResult(text),
+          ...items.map((it) => it?.domain),
+          ...items.map((it) => rawAuthorName(it?.provenance)),
+        ),
         { items: items.map(structuredItem) },
       );
     },
@@ -1358,7 +1374,11 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         // The cursor is the last ACCEPTED batch's, never the newest one
         // seen: a batch that did not fit the budget was not returned, so
         // pointing past it would skip every entry in it.
-        withDomainEscapeLegend(
+        //
+        // Author names are candidates too, not just domains: same reasoning
+        // as memory_read's call site above (I66-1..I66-3, issue #66).
+        withEscapeLegendAt(
+          MAX_DOMAIN_TAG_LITERAL,
           capResult(
             formatRecentPage(items, acceptedCursor) +
               (stoppedEarly ? LIST_PAGE_EARLY_STOP_NOTE : ""),
@@ -1368,6 +1388,7 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
             "Lower `limit` or add a `domain` for smaller pages.",
           ),
           ...items.map((it) => it?.domain),
+          ...items.map((it) => rawAuthorName(it?.provenance)),
         ),
         {
           items: items.map(structuredItem),

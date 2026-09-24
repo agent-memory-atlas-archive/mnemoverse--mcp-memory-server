@@ -116,7 +116,14 @@ export interface ExactLiteral {
 /** Longest literal we will print for a domain name in a sentence or a list. */
 export const MAX_DOMAIN_LITERAL = 256;
 
-/** Longest literal we will print as an `@domain` tag on a result line. */
+/**
+ * Longest literal we will print as an `@domain` tag on a result line.
+ *
+ * Shared, not mirrored: the ` [by "name"]` author tag (`formatAuthorTag`,
+ * src/render.ts) reuses this SAME constant rather than a second one of its
+ * own (owner decision I66-4, issue #66, 2026-09-24): one calibrated number,
+ * not two magic values that happen to agree today and can drift apart later.
+ */
 export const MAX_DOMAIN_TAG_LITERAL = 128;
 
 /**
@@ -280,8 +287,6 @@ export const DOMAIN_ESCAPE_LEGEND =
   "escape such as \\u00a0 or \\n stands for ONE character. Decode it before you " +
   "send the name back — do not paste the escape text.)";
 
-/** Substring that identifies the legend, for the at-most-once check below. */
-const LEGEND_MARK = "printed as JSON string literals";
 
 /**
  * Append {@link DOMAIN_ESCAPE_LEGEND} to `message` if one of `names` was printed
@@ -301,9 +306,33 @@ export function withDomainEscapeLegend(
   message: string,
   ...names: (string | null | undefined)[]
 ): string {
-  if (message.includes(LEGEND_MARK)) return message;
+  return withEscapeLegendAt(MAX_DOMAIN_LITERAL, message, ...names);
+}
+
+/**
+ * The same legend, for a surface that printed its literals under a different
+ * cap. The result-line tags (`@domain`, `[by "name"]`) refuse a literal longer
+ * than MAX_DOMAIN_TAG_LITERAL and print a name-free fallback instead, so a
+ * candidate must be judged under THAT cap there: judged under the larger
+ * note cap, a name in between the two would count as printed-and-escaped
+ * whenever its literal happens to appear in a result's content, and the
+ * legend would explain an escape the tag never showed (review round 2 on
+ * issue #66).
+ *
+ * The at-most-once check looks for the whole legend, not a fragment of it:
+ * a fragment short enough to fit a printed literal (an author name from
+ * another connector, say) could otherwise appear inside a tag and suppress
+ * the legend for a genuinely escaped name elsewhere on the page. The whole
+ * legend is longer than any literal either cap admits.
+ */
+export function withEscapeLegendAt(
+  max: number,
+  message: string,
+  ...names: (string | null | undefined)[]
+): string {
+  if (message.includes(DOMAIN_ESCAPE_LEGEND)) return message;
   const needed = names.some((n) => {
-    const r = exactLiteral(n);
+    const r = exactLiteral(n, max);
     return r !== null && r.escaped && message.includes(r.literal);
   });
   return needed ? message + DOMAIN_ESCAPE_LEGEND : message;
@@ -367,8 +396,18 @@ export function structuredText(s: unknown, cap: number): string | undefined {
       code === 0x200d || // ZWJ
       code === 0x2060 || // WORD JOINER
       code === 0xfeff; // ZWNBSP / BOM
-    if (isControl || isBidi) out += " ";
-    else if (isZeroWidth) continue;
+    // Every other Unicode format character (general category Cf) is dropped
+    // as well: the Tag block (U+E0000 to U+E007F, an invisible copy of ASCII
+    // used to smuggle text past a reader), U+00AD SOFT HYPHEN, and the rest.
+    // `exactLiteral` already escapes the whole category on the text surface;
+    // the data surface removed only the curated lists above until Sigma
+    // showed the gap on #168 (review round 4). Zl and Zp (line and paragraph
+    // separators) count as control here: they break a value the same way a
+    // newline does.
+    const isOtherFormat = /^[\p{Cf}]$/u.test(ch);
+    const isLineSeparator = /^[\p{Zl}\p{Zp}]$/u.test(ch);
+    if (isControl || isBidi || isLineSeparator) out += " ";
+    else if (isZeroWidth || isOtherFormat) continue;
     else out += ch;
   }
   const collapsed = out.replace(/\s+/g, " ").trim();

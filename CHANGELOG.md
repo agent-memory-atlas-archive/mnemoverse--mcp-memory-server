@@ -231,6 +231,78 @@ git history and the GitHub releases are the record.
   `structuredContent` at all, the same kind of divergence S5 disclosed for
   its cursor semantics.
 
+### Fixed
+
+- **Author tags erased non-Latin names to nothing.** `formatAuthorTag`'s
+  `[by X]` tag rendered agent identity through `safeInline`, whose charset is
+  ASCII `\w`: a Cyrillic, CJK or Arabic `agent_name` sanitised to the empty
+  string and the tag disappeared with no trace, leaving a memory with a real
+  author looking unauthored (issue #66). `@domain` got the same fix in 0.8.1
+  ("The domain hint lied about non-Latin names," above); this is the author
+  tag's turn. Every author name is now printed as an exact JSON string
+  literal through `exactLiteral` (src/names.ts), the same treatment
+  `formatDomainTag` already gives `@domain`, for EVERY name, not only ones
+  that need escaping: `[by "sigma"]`, `[by "Ольга" · external]` (owner
+  decision I66-1, 2026-09-24, full symmetry with domains). `" · external"`
+  sits outside the quotes, since it is a server-added qualifier and not part
+  of the name (I66-3). The literal is capped at `MAX_DOMAIN_TAG_LITERAL`
+  (128), the SAME constant `@domain` uses, not a second one that happens to
+  share the value (I66-4), and a name too long to print exactly gets the
+  disclosed fallback `[by (name cannot be printed exactly)]` rather than
+  vanishing. An escaped author literal now gets the same "printed as JSON
+  string literals" escape-legend sentence an escaped domain already gets
+  (`withDomainEscapeLegend`, src/tools.ts), on both `memory_read` and
+  `memory_list_recent`. Two things about that legend changed with it (review
+  round 2): on the result-line surfaces a candidate is judged under the tag
+  cap (`MAX_DOMAIN_TAG_LITERAL`), the cap the tag actually printed under,
+  so a name too long for the tag cannot earn a legend through a literal
+  that merely appears in a result's content; and the at-most-once check
+  looks for the whole legend rather than a fragment of it, so an author
+  name equal to that fragment, sent by another connector, can no longer
+  suppress the legend for a genuinely escaped name on the same page.
+  `is_external` counts as external only when it is the boolean `true`.
+  And `structuredContent.author` follows the tag's own rule (review round
+  3): it is present exactly when the tag prints the name, decided by the
+  same `exactLiteral` check under the same cap, and carries the whole
+  normalised name; the old 64-code-point cap, inherited from `safeInline`,
+  could hold a shorter name than the page showed, or a name the page had
+  refused. One stated exception: a name made only of the characters
+  `structuredText` removes (whitespace, control, bidi, zero-width) is
+  printed exactly in the tag, as an escaped literal with the legend, but has
+  no plain data value, so the data omits `author` rather than carry `""` or
+  the raw characters. `structuredText` itself (src/names.ts) now drops every
+  Unicode format character, not only its curated lists of bidi and
+  zero-width code points: the Tag block (U+E0000 to U+E007F, an invisible
+  copy of ASCII used to smuggle text past a reader) and U+00AD SOFT HYPHEN
+  passed into `structuredContent.author` unchanged while the text tag
+  escaped them (Sigma, review round 4). This is the one normaliser every
+  structured free-text field uses (room names, `reason`, `share_message`,
+  `next_steps`, vault aliases and contexts), so those fields gain the same
+  rule; line and paragraph separators (U+2028, U+2029) now count as control
+  characters there too.
+  **`structuredContent.author` had the same erasure, undetected**, found
+  while fixing this, not reported in the original issue: it fed off the same
+  `safeInline`-sanitised value, so a non-Latin name reached neither surface.
+  It now runs through `structuredText` (src/names.ts) instead, the same
+  control/bidi/zero-width-only normalisation `memory_write`'s `reason` field
+  already gets, so a name survives in the data whenever it survives on the
+  page. This drops bracket/quote stripping from the bare field (owner
+  decision I66-2, 2026-09-23): a JSON field value cannot be "closed early" by
+  a literal `]` or `"` the way a hand-built sentence can, so the quoting on
+  the TEXT tag now carries that burden, and the bare field only needs the
+  same invisible/reordering-character defence every other `structuredText`
+  field already has.
+  **Disclosed divergence**: this is a visible TEXT change on every result
+  line that carries an author (every `[by X]` becomes `[by "X"]`), which
+  this project's own rule (the header of this file) treats as a PATCH, not a
+  MINOR: no tool, no parameter and no schema shape changed. The 0.8.1
+  domain-tag entry above made the identical call for the identical reason
+  (owner decision I66-5, 2026-09-23).
+  **Known and not fixed here**: the hosted connector (mnemoverse-mcp-remote)
+  has its own, separate copy of this exact ASCII-erasure defect in its own
+  author-tag rendering. This package shares no code with the connector, so
+  this fix does not reach it; that is a separate issue for that repository.
+
 ## [0.11.0] — 2026-09-23
 
 ### Added
