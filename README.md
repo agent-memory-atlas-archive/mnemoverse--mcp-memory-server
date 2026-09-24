@@ -344,12 +344,20 @@ saw and diff it against what the server serves today, by version.
   renamed annotation field is declared under both names until the announced
   version.
 - Any difference between two servers of the same version is a bug. Report it
-  with both `tools/list` outputs.
+  with both `tools/list` outputs. One exception, by configuration: a server
+  built on the `/shared` entry point may ask for its own noun in the three
+  descriptions that name the server (`wording.serverNoun`, below), which
+  changes those three description strings and nothing else; tool names,
+  input and output schemas and annotations never vary by configuration.
 
 The list above is the 0.11 surface: ten tools, each declaring all four hints.
 The hosted connector at `mcp.mnemoverse.com/mcp` serves the same ten.
 
 **If the hosted connector stops answering in a session.** A client can keep showing the connector as connected while every call in that session fails with "not connected". Reconnecting it on claude.ai does not revive a session that is already stuck; reconnect from inside the session instead (in Claude Code, `/mcp`, then sign in again). Meanwhile this local server, set up with an API key from the same account as in the Quick Start, reaches the same memory and does not depend on that session's sign-in.
+
+### Building a second MCP server on this package
+
+`@mnemoverse/mcp-memory-server/shared` is the entry point another server registers these same tools from, instead of keeping its own copy (ADR-025, mnemoverse-core). It exports `registerMemoryTools`/`registerMemoryPrompts`/`registerMemoryResources`, the three typed error classes (`ApiError`, `NetworkError`, `UnreadableBodyError`), `MAX_RESULT_CHARS`/`capResult`, and two optional dependencies a hosted deployment injects to speak in its own voice: `wording` (its own server noun and error vocabulary, including an OAuth mode under which no 401 or 403 explanation names an API key) and `writeAuthor` (vouching for the end user behind a write). See [`docs/shared.md`](./docs/shared.md) for the full contract.
 
 ## Use cases
 
