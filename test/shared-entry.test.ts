@@ -15,6 +15,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
+  capResult,
+  MAX_RESULT_CHARS,
   registerMemoryPrompts,
   registerMemoryResources,
   registerMemoryTools,
@@ -125,6 +127,38 @@ describe("the shared entry point", () => {
     expect(pkg.exports["./dist/*"]).toBe("./dist/*");
     expect(pkg.main).toBe("./dist/index.js");
     expect(pkg.bin["mcp-memory-server"]).toBe("./dist/index.js");
+  });
+
+  it("exports the tool-result character cap and its truncation helper (OD-2, 96,000 chars)", () => {
+    expect(MAX_RESULT_CHARS).toBe(96_000);
+    expect(MAX_RESULT_CHARS).toBe(24_000 * 4);
+    expect(typeof capResult).toBe("function");
+    const short = "short text";
+    expect(capResult(short)).toBe(short);
+    const long = "x".repeat(MAX_RESULT_CHARS + 1000);
+    const truncated = capResult(long);
+    expect(truncated.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+    expect(truncated.endsWith("[…truncated to fit the 25K token limit. Use a more specific query to see all results.]")).toBe(true);
+  });
+
+  it("capResult never leaves a lone surrogate: an astral character exactly at the cut is dropped whole", () => {
+    // The cut for the default hint falls at MAX_RESULT_CHARS - 200; put a
+    // surrogate pair so that its high surrogate is the last unit before it.
+    const cut = MAX_RESULT_CHARS - 200;
+    const text = "x".repeat(cut - 1) + "\u{1F600}" + "y".repeat(2000);
+    const out = capResult(text);
+    expect(out.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+    // No unpaired surrogate anywhere in the result.
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(out)).toBe(false);
+    expect(out.startsWith("x".repeat(cut - 1) + "\n\n[…truncated")).toBe(true);
+  });
+
+  it("capResult keeps the whole result within the cap for a hint longer than the reserve, and bounds the hint", () => {
+    const longHint = "h".repeat(5_000);
+    const out = capResult("x".repeat(MAX_RESULT_CHARS + 10), longHint);
+    expect(out.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+    expect(out.endsWith("h".repeat(1_000) + "]")).toBe(true);
+    expect(out.includes("h".repeat(1_001))).toBe(false);
   });
 
   it("starts nothing on import: neither the entry nor the tools import src/index.ts", () => {
