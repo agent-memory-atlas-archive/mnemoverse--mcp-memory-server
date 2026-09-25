@@ -16,6 +16,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   CURSOR_RE,
+  formatDateTag,
   formatReadItem,
   formatRecentPage,
   rawAuthorName,
@@ -38,6 +39,7 @@ import {
   type ReadScope,
 } from "./scope.js";
 import {
+  graphRequestBody,
   readRequestBody,
   recentRequestBody,
   writeRequestBody,
@@ -72,7 +74,10 @@ import { utcInstant } from "./time.js";
  * `UnreadableBodyError`. All three are exported from ./shared and defined in
  * src/errors.ts. `options.signal` must be honoured.
  */
-export type ApiFetch = <T = unknown>(path: string, options?: RequestInit) => Promise<T>;
+export type ApiFetch = <T = unknown>(
+  path: string,
+  options?: RequestInit,
+) => Promise<T>;
 
 /**
  * `deps.apiFetch` with `deps.wording` applied to what it throws (STEP4-2):
@@ -85,7 +90,10 @@ export type ApiFetch = <T = unknown>(path: string, options?: RequestInit) => Pro
  * before.
  */
 export function wordedApiFetch(inner: ApiFetch, wording: Wording): ApiFetch {
-  return async <T = unknown>(path: string, options?: RequestInit): Promise<T> => {
+  return async <T = unknown>(
+    path: string,
+    options?: RequestInit,
+  ): Promise<T> => {
     try {
       return await inner<T>(path, options);
     } catch (e) {
@@ -293,7 +301,10 @@ export function unreadableAnswerText(
 export function structured(
   text: string,
   data: Record<string, unknown>,
-): { content: [{ type: "text"; text: string }]; structuredContent: Record<string, unknown> } {
+): {
+  content: [{ type: "text"; text: string }];
+  structuredContent: Record<string, unknown>;
+} {
   return {
     content: [{ type: "text" as const, text }],
     structuredContent: data,
@@ -354,7 +365,9 @@ function isRoomDomain(domain: string | undefined): boolean {
  * memory_write / memory_read] to read and write" unconditionally — true for a
  * read_write membership, false for a read-only one.
  */
-function roomScopeVerdict(scope: string | undefined): "read_write" | "read" | "unspecified" {
+function roomScopeVerdict(
+  scope: string | undefined,
+): "read_write" | "read" | "unspecified" {
   if (scope === "read_write") return "read_write";
   if (scope === "read") return "read";
   return "unspecified";
@@ -396,13 +409,17 @@ const PROBE_TIMEOUT_MS = 4000;
  * (test/read-structured.test.ts pins it unchanged).
  */
 const MEMORY_ITEM_OUTPUT = {
-  memory_id: z.string().describe("Identifier needed to rate or manage this saved memory."),
+  memory_id: z
+    .string()
+    .describe("Identifier needed to rate or manage this saved memory."),
   content: z.string().describe("Stored memory content."),
   domain: z.string().describe("User-defined memory namespace or domain."),
   created_at: z
     .string()
     .optional()
-    .describe("UTC creation instant, ISO-8601; absent on legacy memories without a timestamp."),
+    .describe(
+      "UTC creation instant, ISO-8601; absent on legacy memories without a timestamp.",
+    ),
   author: z
     .string()
     .optional()
@@ -415,11 +432,17 @@ const MEMORY_ITEM_OUTPUT = {
  * Register the ten memory tools on `server`. Call once per server instance.
  * `deps.apiFetch` is the only way the tools reach the API.
  */
-export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): void {
+export function registerMemoryTools(
+  server: McpServer,
+  deps: MemoryToolDeps,
+): void {
   const { wording, writeAuthor } = deps;
   // STEP4-2: `wording` reaches the error text here, on every rejection, not
   // in the consumer's constructors. See wordedApiFetch.
-  const apiFetch = wording === undefined ? deps.apiFetch : wordedApiFetch(deps.apiFetch, wording);
+  const apiFetch =
+    wording === undefined
+      ? deps.apiFetch
+      : wordedApiFetch(deps.apiFetch, wording);
 
   // Read once, defensively: `wording` crosses a public package boundary a
   // caller controls only at compile time (STEP4-2, owner 2026-09-24). A
@@ -428,10 +451,12 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
   // a stale value from a future third option) falls back to the default
   // rather than being printed. Defaults to today's wording exactly, so a
   // server that supplies no `wording` at all gets byte-identical descriptions.
-  const serverNoun = wording?.serverNoun === "this connector" ? "this connector" : "this server";
+  const serverNoun =
+    wording?.serverNoun === "this connector" ? "this connector" : "this server";
   // Same value, sentence-initial capitalisation, for the one description that
   // opens a second sentence with it rather than sitting mid-clause.
-  const serverNounCap = serverNoun === "this connector" ? "This connector" : "This server";
+  const serverNounCap =
+    serverNoun === "this connector" ? "This connector" : "This server";
 
   // ANNOTATIONS, decided once for every server that registers these tools
   // (owner, 2026-09-21; the stdio server and the hosted connector had answered
@@ -468,8 +493,14 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
   function probeScope(searched: string | undefined): Promise<ReadScope> {
     return probeReadScope(
       searched,
-      () => apiFetch<unknown>("/memory/stats", { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }),
-      () => apiFetch<unknown>("/memory/rooms", { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }),
+      () =>
+        apiFetch<unknown>("/memory/stats", {
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        }),
+      () =>
+        apiFetch<unknown>("/memory/rooms", {
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        }),
       safeInline,
     );
   }
@@ -527,16 +558,20 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       outputSchema: {
         stored: z
           .boolean()
-          .describe("Whether the memory passed the novelty gate and was stored."),
+          .describe(
+            "Whether the memory passed the novelty gate and was stored.",
+          ),
         memory_id: z
           .string()
           .nullable()
-          .describe("Identifier of the stored memory, or null when it was not stored."),
+          .describe(
+            "Identifier of the stored memory, or null when it was not stored.",
+          ),
         reason: z
           .string()
           .optional()
           .describe(
-            "The memory service's own explanation of this outcome, quoted as sent — when stored is false this is the ONLY statement of WHY, e.g. \"Below importance threshold (0.047 < 0.1)\". Ordinary text is preserved exactly; only control, bidi, zero-width, and repeated-whitespace characters are normalized before display, and the value is capped at 400 characters. Absent when the service sent no explanation, or when nothing remains after that normalization.",
+            'The memory service\'s own explanation of this outcome, quoted as sent — when stored is false this is the ONLY statement of WHY, e.g. "Below importance threshold (0.047 < 0.1)". Ordinary text is preserved exactly; only control, bidi, zero-width, and repeated-whitespace characters are normalized before display, and the value is capped at 400 characters. Absent when the service sent no explanation, or when nothing remains after that normalization.',
           ),
         importance: z
           .number()
@@ -592,7 +627,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // future core release adds any better than core's own validator does.
       const authorRaw: unknown = writeAuthor?.();
       const author: WriteAuthor | undefined =
-        typeof authorRaw === "object" && authorRaw !== null ? authorRaw : undefined;
+        typeof authorRaw === "object" && authorRaw !== null
+          ? authorRaw
+          : undefined;
       const r = await apiFetch<{
         stored?: boolean;
         atom_id?: string | null;
@@ -600,7 +637,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         reason?: string;
       }>("/memory/write", {
         method: "POST",
-        body: JSON.stringify(writeRequestBody({ content, concepts, domain }, author)),
+        body: JSON.stringify(
+          writeRequestBody({ content, concepts, domain }, author),
+        ),
       });
 
       // `stored` MUST BE A BOOLEAN before either verdict below may be printed.
@@ -654,7 +693,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // exactly instead (src/names.ts). If it will not fit, say THAT rather than
       // drop the clause: omitting it would report a server that gave no reason.
       const reasonQuote = r?.reason
-        ? (exactLiteral(r.reason, 400)?.literal ?? "(too long to quote exactly)")
+        ? (exactLiteral(r.reason, 400)?.literal ??
+          "(too long to quote exactly)")
         : "";
 
       // Structured twins of the two text-only values above, for
@@ -673,7 +713,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           : undefined;
       const optionalStructured = {
         ...(reasonStructured === undefined ? {} : { reason: reasonStructured }),
-        ...(importanceStructured === undefined ? {} : { importance: importanceStructured }),
+        ...(importanceStructured === undefined
+          ? {}
+          : { importance: importanceStructured }),
       };
 
       // Narrowed to `true` by the guard above, so this is now the server's stated
@@ -696,11 +738,14 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
               " was saved or that it was rejected.",
           );
         }
-        return structured(`Stored (importance: ${importance}). ID: ${r.atom_id}`, {
-          stored: true,
-          memory_id: r.atom_id,
-          ...optionalStructured,
-        });
+        return structured(
+          `Stored (importance: ${importance}). ID: ${r.atom_id}`,
+          {
+            stored: true,
+            memory_id: r.atom_id,
+            ...optionalStructured,
+          },
+        );
       }
       // NOT STORED. The old wording ("Filtered — …") named the mechanism but
       // never the outcome, so a caller could read it as a soft success and move
@@ -865,7 +910,15 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         openWorldHint: false,
       },
     },
-    async ({ query, top_k, domain, order_by, since, until, exclude_author }) => {
+    async ({
+      query,
+      top_k,
+      domain,
+      order_by,
+      since,
+      until,
+      exclude_author,
+    }) => {
       // ONE value, used for the request AND for every decision about it.
       //
       // A previous draft sent the raw string but decided the wording from a
@@ -890,7 +943,15 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       }>("/memory/read", {
         method: "POST",
         body: JSON.stringify(
-          readRequestBody({ query, top_k, domain, order_by, since, until, exclude_author }),
+          readRequestBody({
+            query,
+            top_k,
+            domain,
+            order_by,
+            since,
+            until,
+            exclude_author,
+          }),
         ),
       });
 
@@ -1222,22 +1283,22 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       for (let attempt = 0; attempt < LIST_PAGE_MAX_REQUESTS; attempt++) {
         let r: { items?: RecentItem[]; next_cursor?: string | null };
         try {
-          r = await apiFetch<{ items?: RecentItem[]; next_cursor?: string | null }>(
-            "/memory/recent",
-            {
-              method: "POST",
-              body: JSON.stringify(
-                recentRequestBody({
-                  domain,
-                  since,
-                  until,
-                  exclude_author,
-                  limit: ask,
-                  cursor: position,
-                }),
-              ),
-            },
-          );
+          r = await apiFetch<{
+            items?: RecentItem[];
+            next_cursor?: string | null;
+          }>("/memory/recent", {
+            method: "POST",
+            body: JSON.stringify(
+              recentRequestBody({
+                domain,
+                since,
+                until,
+                exclude_author,
+                limit: ask,
+                cursor: position,
+              }),
+            ),
+          });
         } catch (e) {
           // A failure with entries already in hand ends the page instead of the
           // call: the caller keeps what was fetched plus a cursor that still
@@ -1341,11 +1402,14 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           // to the service either, so paging stops here and the page says
           // the token could not be displayed (Copilot, #159).
           position =
-            typeof next === "string" && next && CURSOR_RE.test(next) ? next : undefined;
+            typeof next === "string" && next && CURSOR_RE.test(next)
+              ? next
+              : undefined;
           // No cursor: the feed ended, and the page says so. No entries: the
           // server is not advancing, so continuing would spend requests on the
           // same nothing. Ceiling reached: the caller's count is spent.
-          if (!position || batch.length === 0 || accepted.length >= ceiling) break;
+          if (!position || batch.length === 0 || accepted.length >= ceiling)
+            break;
           ask = Math.min(LIST_PAGE_CHUNK, ceiling - accepted.length);
           continue;
         }
@@ -1373,7 +1437,10 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         // rejecting the batch outright answers a working feed with "unreadable".
         // A contract-violating server is the precondition; the real fix is
         // fetch-by-id (#104 follow-up), not a guess here.
-        const narrower = Math.max(1, Math.min(Math.floor(ask / 2), batch.length - 1));
+        const narrower = Math.max(
+          1,
+          Math.min(Math.floor(ask / 2), batch.length - 1),
+        );
         if (batch.length <= 1 || batch.length > ask || narrower >= ask) {
           accepted.push(...batch);
           acceptedCursor = next === "" ? null : next; // same end-of-feed rule as above
@@ -1523,7 +1590,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           // would pass the regex by coercion and then fail the schema.
           ...(acceptedCursor == null
             ? { next_cursor: null }
-            : typeof acceptedCursor === "string" && CURSOR_RE.test(acceptedCursor)
+            : typeof acceptedCursor === "string" &&
+                CURSOR_RE.test(acceptedCursor)
               ? { next_cursor: acceptedCursor }
               : {}),
         },
@@ -1713,7 +1781,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       }>("/memory/feedback", {
         method: "POST",
         body: JSON.stringify(
-          scope === undefined ? { atom_ids, outcome } : { atom_ids, outcome, domain: scope },
+          scope === undefined
+            ? { atom_ids, outcome }
+            : { atom_ids, outcome, domain: scope },
         ),
       });
 
@@ -1740,7 +1810,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         // isSafeInteger, not isInteger: the output schema is z.number().int(),
         // and zod 4 rejects an integer above 2^53 - 1, so such a count would
         // turn the whole reply into an SDK validation error (review, 2026-09-23).
-        typeof reported === "number" && Number.isSafeInteger(reported) && reported >= 0
+        typeof reported === "number" &&
+        Number.isSafeInteger(reported) &&
+        reported >= 0
           ? reported
           : undefined;
 
@@ -1824,7 +1896,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
                 `${sent} The service accepted the call but did not report how many ` +
                 `memories it updated, so whether any changed is unknown from here. ` +
                 `That is not evidence of a failure — do not re-send the same rating ` +
-                `on the strength of it.` + pickADirection,
+                `on the strength of it.` +
+                pickADirection,
             },
           ],
         };
@@ -1848,8 +1921,12 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
             `${feedbackScope(scope)}. ${feedbackMissCauses(scope)}`,
           {
             updated_count: 0,
-            ...(avgValenceStructured === undefined ? {} : { avg_valence: avgValenceStructured }),
-            ...(coactivationEdges === undefined ? {} : { coactivation_edges: coactivationEdges }),
+            ...(avgValenceStructured === undefined
+              ? {}
+              : { avg_valence: avgValenceStructured }),
+            ...(coactivationEdges === undefined
+              ? {}
+              : { coactivation_edges: coactivationEdges }),
           },
         );
       }
@@ -1870,11 +1947,11 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         outcome > 0
           ? " — they should surface sooner next time."
           : outcome < 0
-            // No fade. 0.9.1 (#95) withdrew "lets it fade" as false — nothing
-            // time-decays, nothing is auto-deleted, and deletion has been
-            // administrative-only since 0.9.0 — and this line kept promising it
-            // after the release that deleted the claim from the README.
-            ? " — they should rank lower next time. Out-ranked, not erased: nothing is deleted and nothing decays with time."
+            ? // No fade. 0.9.1 (#95) withdrew "lets it fade" as false — nothing
+              // time-decays, nothing is auto-deleted, and deletion has been
+              // administrative-only since 0.9.0 — and this line kept promising it
+              // after the release that deleted the claim from the README.
+              " — they should rank lower next time. Out-ranked, not erased: nothing is deleted and nothing decays with time."
             : ".";
 
       // WHAT THE COUNT IS NOT: a guarantee that every id landed. `atom_ids.length`
@@ -1936,8 +2013,12 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         `${sent} The service reports ${noun} updated${effect}${valence}${mismatch}${pickADirection}`,
         {
           updated_count: count,
-          ...(avgValenceStructured === undefined ? {} : { avg_valence: avgValenceStructured }),
-          ...(coactivationEdges === undefined ? {} : { coactivation_edges: coactivationEdges }),
+          ...(avgValenceStructured === undefined
+            ? {}
+            : { avg_valence: avgValenceStructured }),
+          ...(coactivationEdges === undefined
+            ? {}
+            : { coactivation_edges: coactivationEdges }),
         },
       );
     },
@@ -1998,7 +2079,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         avg_importance: z
           .number()
           .optional()
-          .describe("Average importance of stored memories, on a scale from 0 to 1."),
+          .describe(
+            "Average importance of stored memories, on a scale from 0 to 1.",
+          ),
       },
       annotations: {
         title: "Memory Statistics",
@@ -2051,8 +2134,10 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // "0" is the same class of lie as an empty search claiming emptiness:
       // "Associations: 0" reads as "this memory has learned nothing", which is
       // a strong and possibly false statement about the product itself.
-      const num = (v: unknown) => (typeof v === "number" ? String(v) : "unknown");
-      const dec = (v: unknown) => (typeof v === "number" ? v.toFixed(2) : "unknown");
+      const num = (v: unknown) =>
+        typeof v === "number" ? String(v) : "unknown";
+      const dec = (v: unknown) =>
+        typeof v === "number" ? v.toFixed(2) : "unknown";
 
       // THE surface this tool's own description sends the reader to, to
       // confirm the exact domain name before writing to it — so it has to be
@@ -2110,7 +2195,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // text/data divergence is disclosed in the CHANGELOG, as S5 disclosed
       // its cursor semantics.
       const safeIntOrUndefined = (v: unknown): number | undefined =>
-        typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
+        typeof v === "number" && Number.isSafeInteger(v) && v >= 0
+          ? v
+          : undefined;
       const finiteOrUndefined = (v: unknown): number | undefined =>
         typeof v === "number" && Number.isFinite(v) ? v : undefined;
       const episodesStructured = safeIntOrUndefined(r?.episodes);
@@ -2130,7 +2217,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // existing startup-diagnostic style ("Mnemoverse: ..." in src/index.ts),
       // the operator's channel rather than the model's: putting this in the
       // tool text would surface an implementation detail to the agent reading it.
-      const domainsStructured = domainsRaw.filter((d): d is string => typeof d === "string");
+      const domainsStructured = domainsRaw.filter(
+        (d): d is string => typeof d === "string",
+      );
       const droppedDomains = domainsRaw.length - domainsStructured.length;
       if (droppedDomains > 0) {
         console.error(
@@ -2166,12 +2255,18 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         {
           memory_count: memoryCount,
           domains: domainsStructured,
-          ...(episodesStructured === undefined ? {} : { episodes: episodesStructured }),
-          ...(prototypesStructured === undefined ? {} : { prototypes: prototypesStructured }),
+          ...(episodesStructured === undefined
+            ? {}
+            : { episodes: episodesStructured }),
+          ...(prototypesStructured === undefined
+            ? {}
+            : { prototypes: prototypesStructured }),
           ...(hebbianEdgesStructured === undefined
             ? {}
             : { hebbian_edges: hebbianEdgesStructured }),
-          ...(avgValenceStructured === undefined ? {} : { avg_valence: avgValenceStructured }),
+          ...(avgValenceStructured === undefined
+            ? {}
+            : { avg_valence: avgValenceStructured }),
           ...(avgImportanceStructured === undefined
             ? {}
             : { avg_importance: avgImportanceStructured }),
@@ -2245,7 +2340,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           .describe("The room's id (room_...); pass to memory_invite_to_room."),
         address: z
           .string()
-          .describe("Domain address (xroom:<id>); pass as `domain` on read/write."),
+          .describe(
+            "Domain address (xroom:<id>); pass as `domain` on read/write.",
+          ),
         name: z.string().optional().describe("The room name as stored."),
       },
       annotations: {
@@ -2358,11 +2455,16 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           .min(CORE_LIMITS.inviteMaxUses.minimum)
           .max(CORE_LIMITS.inviteMaxUses.maximum)
           .optional()
-          .describe("How many people may join with this invite (default 1, single-use)."),
+          .describe(
+            "How many people may join with this invite (default 1, single-use).",
+          ),
       },
       outputSchema: {
         share_message: z.string().describe("Ready-to-forward invite text."),
-        join_url: z.string().optional().describe("Landing URL the invitee can open to join."),
+        join_url: z
+          .string()
+          .optional()
+          .describe("Landing URL the invitee can open to join."),
         code: z
           .string()
           .optional()
@@ -2374,7 +2476,11 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           .string()
           .optional()
           .describe("The room's domain address (xroom:<id>)."),
-        expires_at: z.string().nullable().optional().describe("ISO 8601 expiry, or null."),
+        expires_at: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("ISO 8601 expiry, or null."),
       },
       annotations: {
         title: "Invite to room",
@@ -2421,7 +2527,10 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // structuredContent.share_message to pair it with.
       const shareMessageStructured = structuredText(rawMessage, 800);
       if (shareMessageStructured === undefined) {
-        return { content: [{ type: "text" as const, text }], isError: true as const };
+        return {
+          content: [{ type: "text" as const, text }],
+          isError: true as const,
+        };
       }
       // `join_url` through safeInline with the connector's own cap of 400,
       // as the connector does (mnemoverse-mcp-remote, memory_invite_to_room):
@@ -2439,7 +2548,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       const scopeSafe = safeInline(r?.scope);
       const scopeStructured = scopeSafe === "" ? undefined : scopeSafe;
       const roomAddressSafe = safeInline(r?.room_address);
-      const roomAddressStructured = roomAddressSafe === "" ? undefined : roomAddressSafe;
+      const roomAddressStructured =
+        roomAddressSafe === "" ? undefined : roomAddressSafe;
       // `expires_at` through utcInstant's RETURN, the rule memory_read's
       // `created_at` already follows (S4): a value that states its offset is
       // carried exactly as sent, an offset-less one, which this package reads
@@ -2448,14 +2558,22 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // reading the naive string as local time (CodeRabbit, review round 2).
       // `null` when core sent null; absent when the value does not parse.
       const expiresAtStructured =
-        r?.expires_at === null ? null : (utcInstant(r?.expires_at) ?? undefined);
+        r?.expires_at === null
+          ? null
+          : (utcInstant(r?.expires_at) ?? undefined);
       return structured(text, {
         share_message: shareMessageStructured,
-        ...(joinUrlStructured === undefined ? {} : { join_url: joinUrlStructured }),
+        ...(joinUrlStructured === undefined
+          ? {}
+          : { join_url: joinUrlStructured }),
         ...(codeStructured === undefined ? {} : { code: codeStructured }),
         ...(scopeStructured === undefined ? {} : { scope: scopeStructured }),
-        ...(roomAddressStructured === undefined ? {} : { room_address: roomAddressStructured }),
-        ...(expiresAtStructured === undefined ? {} : { expires_at: expiresAtStructured }),
+        ...(roomAddressStructured === undefined
+          ? {}
+          : { room_address: roomAddressStructured }),
+        ...(expiresAtStructured === undefined
+          ? {}
+          : { expires_at: expiresAtStructured }),
       });
     },
   );
@@ -2468,15 +2586,24 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       description:
         "Join a shared memory room using an invite code (starts with 'mnvr_'). Use when the user pastes an invite code or says something like 'join room with code ...'. After joining, use the returned address as the `domain` on memory_read to read the shared room — the result tells you what you may do with it: memory_write to that address is only allowed when your membership scope is read_write; a read-only membership has that write refused; and when the server does not report a scope, whether memory_write would succeed is stated as unknown rather than promised either way.",
       inputSchema: {
-        code: z.string().min(1).max(200).describe("The invite code (mnvr_...)."),
+        code: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe("The invite code (mnvr_...)."),
       },
       outputSchema: {
         room_id: z.string().describe("The room's id (room_...)."),
         address: z
           .string()
-          .describe("Domain address (xroom:<id>); pass as `domain` on read/write."),
+          .describe(
+            "Domain address (xroom:<id>); pass as `domain` on read/write.",
+          ),
         name: z.string().optional().describe("The room name."),
-        scope: z.string().optional().describe("Your role in the room ('read' | 'read_write')."),
+        scope: z
+          .string()
+          .optional()
+          .describe("Your role in the room ('read' | 'read_write')."),
         already_member: z
           .boolean()
           .optional()
@@ -2548,7 +2675,10 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           content: [
             {
               type: "text" as const,
-              text: withDomainEscapeLegend(capResult(`${prefix}\n${usage}`), r?.name),
+              text: withDomainEscapeLegend(
+                capResult(`${prefix}\n${usage}`),
+                r?.name,
+              ),
             },
           ],
           isError: true as const,
@@ -2621,10 +2751,14 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
             name: z.string().optional().describe("The room name."),
             address: z
               .string()
-              .describe("Domain address (xroom:<id>); pass as `domain` on read/write."),
+              .describe(
+                "Domain address (xroom:<id>); pass as `domain` on read/write.",
+              ),
             role: z.string().describe("'owner' or 'member'."),
             scope: z.string().optional().describe("'read' or 'read_write'."),
-            archived: z.boolean().describe("True if archived (owned rooms only)."),
+            archived: z
+              .boolean()
+              .describe("True if archived (owned rooms only)."),
           }),
         ),
       },
@@ -2643,7 +2777,10 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // not read. It is the third consumer of this payload and the third place the
       // substitution was made; all three now go through one function that maps an
       // unreadable body to `unknown`, never to `none`.
-      const rooms = classifyRooms(await apiFetch<unknown>("/memory/rooms"), safeInline);
+      const rooms = classifyRooms(
+        await apiFetch<unknown>("/memory/rooms"),
+        safeInline,
+      );
       if (rooms.state === "unknown") {
         // Byte-identical to the inline wording this replaces — the builder is
         // shared so the four list surfaces answer the unreadable case with one
@@ -2673,7 +2810,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         const roomId = safeInline(r?.room_id);
         // Always surface the canonical address: fall back to xroom:<room_id> when the server
         // omits `address`, so the domain guidance this tool promises is never silently dropped.
-        const address = safeInline(r?.address) || (roomId ? `xroom:${roomId}` : "");
+        const address =
+          safeInline(r?.address) || (roomId ? `xroom:${roomId}` : "");
         const role = safeInline(r?.role);
         const scope = safeInline(r?.scope);
         // No "use domain=..." on an archived room: core refuses EVERY read of one
@@ -2706,7 +2844,10 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // actually overflow, and the legend must describe the names that
       // SURVIVED the cut, not the ones it removed.
       const finalText = withDomainEscapeLegend(
-        capResult(text, "The room list was truncated — some rooms are not shown."),
+        capResult(
+          text,
+          "The room list was truncated — some rooms are not shown.",
+        ),
         ...list.map((r) => r?.name),
       );
       // STRUCTURED rows (S9-1/S9-3, owner, 2026-09-23): room_id/address/role/
@@ -2753,7 +2894,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       let droppedRooms = 0;
       for (const r of list) {
         const roomId = safeInline(r?.room_id);
-        const address = safeInline(r?.address) || (roomId ? `xroom:${roomId}` : "");
+        const address =
+          safeInline(r?.address) || (roomId ? `xroom:${roomId}` : "");
         const role = safeInline(r?.role);
         const scope = safeInline(r?.scope);
         if (!roomId || !address || !role) {
@@ -2761,7 +2903,8 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           continue;
         }
         const nameStructured =
-          typeof r?.name === "string" && exactLiteral(r.name, MAX_DOMAIN_LITERAL)
+          typeof r?.name === "string" &&
+          exactLiteral(r.name, MAX_DOMAIN_LITERAL)
             ? structuredText(r.name, MAX_DOMAIN_LITERAL)
             : undefined;
         roomsStructured.push({
@@ -2841,16 +2984,19 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
   server.registerTool(
     "vault_list",
     {
-      description:
-        `List the secrets stored in your Mnemoverse Vault — by ALIAS and purpose only; the secret VALUE is never returned or shown to you, and no tool on ${serverNoun} returns it. Use this to check WHICH secrets the user has stored and under what alias (e.g. the user says 'do I have a GitHub token saved?'). Only YOUR account's secrets are listed.`,
+      description: `List the secrets stored in your Mnemoverse Vault — by ALIAS and purpose only; the secret VALUE is never returned or shown to you, and no tool on ${serverNoun} returns it. Use this to check WHICH secrets the user has stored and under what alias (e.g. the user says 'do I have a GitHub token saved?'). Only YOUR account's secrets are listed.`,
       inputSchema: {},
       outputSchema: {
         secrets: z.array(
           z.object({
             alias: z
               .string()
-              .describe("The secret's alias — the reference you use, never the value."),
-            context: z.string().describe("The secret's purpose/context — never the value."),
+              .describe(
+                "The secret's alias — the reference you use, never the value.",
+              ),
+            context: z
+              .string()
+              .describe("The secret's purpose/context — never the value."),
             concepts: z.array(z.string()).describe("Concept tags."),
           }),
         ),
@@ -2886,7 +3032,9 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         );
       }
       if (list.length === 0) {
-        return structured("No secrets are stored in your Vault yet.", { secrets: [] });
+        return structured("No secrets are stored in your Vault yet.", {
+          secrets: [],
+        });
       }
       const lines = list.map((s) => {
         const alias = safeInline(s?.alias) || "(no alias)";
@@ -2908,7 +3056,11 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
       // from the data, never defaulted (no "" for a context, no [] for
       // concepts). The call itself stands; the drop is counted and reported
       // once on stderr.
-      const secretsStructured: { alias: string; context: string; concepts: string[] }[] = [];
+      const secretsStructured: {
+        alias: string;
+        context: string;
+        concepts: string[];
+      }[] = [];
       let droppedSecrets = 0;
       for (const s of list) {
         const alias = structuredText(s?.alias, VAULT_ALIAS_CAP);
@@ -2918,12 +3070,17 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
           ? conceptsRaw.map((c) => structuredText(c, VAULT_CONCEPT_CAP))
           : undefined;
         const conceptsOk =
-          concepts !== undefined && concepts.every((c): c is string => c !== undefined);
+          concepts !== undefined &&
+          concepts.every((c): c is string => c !== undefined);
         if (alias === undefined || context === undefined || !conceptsOk) {
           droppedSecrets += 1;
           continue;
         }
-        secretsStructured.push({ alias, context, concepts: concepts as string[] });
+        secretsStructured.push({
+          alias,
+          context,
+          concepts: concepts as string[],
+        });
       }
       if (droppedSecrets > 0) {
         console.error(
@@ -2934,6 +3091,315 @@ export function registerMemoryTools(server: McpServer, deps: MemoryToolDeps): vo
         );
       }
       return structured(finalText, { secrets: secretsStructured });
+    },
+  );
+
+  // --- Tool: memory_graph ---
+
+  server.registerTool(
+    "memory_graph",
+    {
+      description:
+        "Reads the association edges around given concepts: which concepts the memory has linked together, with each link's weight, outcome valence and co-activation count. Use to inspect what a memory store has learned or to explain why a read expanded to a concept. Read-only.",
+      inputSchema: {
+        // Bounds come from CORE_LIMITS (src/limits.ts, ADR-025) EXCEPT the
+        // per-seed 200-character cap: GraphRequestSchema.seeds.items carries
+        // no maxLength in the published JSON Schema at all (core enforces it
+        // with a Pydantic validator that has no JSON-Schema-expressible
+        // form, unlike writeContent/domain/etc.), so there is no numeric
+        // field for scripts/generate-limits.mjs to fetch — that literal
+        // stays inline, same as recentCursor's is generated but this one
+        // cannot be.
+        seeds: z
+          .array(
+            z
+              .string()
+              // CODE-POINT length, not `.max(200)` (Copilot review, round 2):
+              // zod's `.max()` on a string counts UTF-16 CODE UNITS, and
+              // core's 200-char/VARCHAR(200) bound counts Unicode CHARACTERS
+              // — 200 astral characters (many emoji, some CJK-extension
+              // ideographs) are 400 UTF-16 units and would be rejected here
+              // while remaining a valid seed core would accept. `[...s]`
+              // iterates by code point, the same technique `structuredText`
+              // and `capResult`'s hint already use (src/names.ts, src/tools.ts).
+              .refine((s) => [...s].length <= 200, {
+                message: "must be at most 200 characters",
+              })
+              .refine((s) => s.trim().length > 0, {
+                message: "must not be blank",
+              }),
+          )
+          .min(CORE_LIMITS.graphSeeds.minItems)
+          .max(CORE_LIMITS.graphSeeds.maxItems)
+          .describe(
+            "Concepts to center the graph on (1-20, each ≤200 chars, non-blank) — e.g. ['deploy', 'staging']. An unrecognised concept simply contributes no edges; it is not an error.",
+          ),
+        depth: z
+          .number()
+          .int()
+          .min(CORE_LIMITS.graphDepth.minimum)
+          .max(CORE_LIMITS.graphDepth.maximum)
+          .optional()
+          .describe(
+            "Hops to expand from the seeds (1-3, default 1). At depth 2 or 3, if min_weight is omitted the engine floors edge weight at 0.05 at EVERY hop — including the first — so a hub concept cannot fan out across the whole store before limit applies; pass min_weight explicitly (0 included) to see every edge anyway.",
+          ),
+        domain: z
+          .string()
+          .optional()
+          .describe(
+            "Read a shared room's graph instead of your own: pass that room's address (e.g. 'xroom:room_01ABC'). Find room addresses with memory_list_rooms. Unlike memory_read, any OTHER value has no effect here — the association store has no domain column, so a plain domain name behaves exactly like omitting this field.",
+          ),
+        min_weight: z
+          .number()
+          .finite()
+          .min(CORE_LIMITS.graphMinWeight.minimum)
+          .optional()
+          .describe(
+            "Only include edges at or above this weight (≥ 0). Omit for no floor at depth 1; at depth 2/3 the engine applies its own 0.05 floor when this is omitted (see depth) — pass 0 to see every edge at every depth.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(CORE_LIMITS.graphLimit.minimum)
+          .max(CORE_LIMITS.graphLimit.maximum)
+          .optional()
+          .describe(
+            "Max edges to return (1-500, default 100 — mirrors memory_read's top_k bounds).",
+          ),
+      },
+      // Field names and descriptions follow core's GraphNodeSchema/GraphEdgeSchema
+      // (https://core.mnemoverse.com/openapi.json) directly — this is a new
+      // endpoint with no back-compat surface, so there is no prior wire shape to
+      // reconcile the way memory_read's MEMORY_ITEM_OUTPUT does.
+      outputSchema: {
+        nodes: z
+          .array(
+            z.object({
+              concept: z.string().describe("The concept name."),
+              degree: z
+                .number()
+                .int()
+                .describe(
+                  "Edges in THIS response touching this concept — not its total degree across the whole store, which limit/truncated may cut short.",
+                ),
+            }),
+          )
+          .describe(
+            "Concepts touched by edges below. A seed with no surviving edge (unrecognised concept, or every edge fell below the weight floor) is not listed.",
+          ),
+        edges: z
+          .array(
+            z.object({
+              source: z
+                .string()
+                .describe(
+                  "One side of the edge (storage order, not learn order).",
+                ),
+              target: z
+                .string()
+                .describe(
+                  "The other side of the edge (storage order, not learn order).",
+                ),
+              weight: z.number().describe("Co-activation strength, 0 and up."),
+              valence: z.number().describe("Outcome polarity, -1 to 1."),
+              count: z.number().int().describe("Co-activation count."),
+              updated_at: z
+                .string()
+                .describe("UTC instant this edge was last reinforced."),
+            }),
+          )
+          .describe("Association edges found within the requested depth."),
+        truncated: z
+          .boolean()
+          .describe(
+            "True when a per-hop server cap or limit cut the walk short — the store may hold more edges than are reported here.",
+          ),
+        min_weight_applied: z
+          .number()
+          .describe(
+            "The weight floor actually used at every hop: your min_weight when you set one (0 included); otherwise 0.05 from depth 2, or 0 at depth 1.",
+          ),
+      },
+      annotations: {
+        title: "Association graph",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ seeds, depth, domain, min_weight, limit }) => {
+      const r = await apiFetch<{
+        nodes?: { concept?: unknown; degree?: unknown }[];
+        edges?: {
+          source?: unknown;
+          target?: unknown;
+          weight?: unknown;
+          valence?: unknown;
+          count?: unknown;
+          updated_at?: unknown;
+        }[];
+        truncated?: unknown;
+        min_weight_applied?: unknown;
+      }>("/memory/graph", {
+        method: "POST",
+        body: JSON.stringify(
+          graphRequestBody({ seeds, depth, domain, min_weight, limit }),
+        ),
+      });
+
+      // core's GraphResponseSchema sends all four of these on every 200
+      // (nodes, edges, truncated, min_weight_applied are all required) — the
+      // same "unreadable 2xx" class memory_read's item guard catches one
+      // level up, here for the whole response shape and for each edge/node.
+      // All-or-nothing, like memory_write's atom_id guard: there is no honest
+      // partial rendering of a graph this client could not fully validate.
+      const nodesRaw = r?.nodes;
+      const edgesRaw = r?.edges;
+      const truncatedRaw = r?.truncated;
+      const minWeightAppliedRaw = r?.min_weight_applied;
+      const shapeOk =
+        Array.isArray(nodesRaw) &&
+        Array.isArray(edgesRaw) &&
+        typeof truncatedRaw === "boolean" &&
+        typeof minWeightAppliedRaw === "number" &&
+        Number.isFinite(minWeightAppliedRaw) &&
+        // `degree`/`count` are safe-integer checks, not just finite ones:
+        // the outputSchema declares both `z.number().int()` (CodeRabbit
+        // review, round 1), and zod 4 rejects a non-integer AND an integer
+        // above 2^53 - 1 there — the same reasoning memory_feedback's
+        // `updated_count` guard already documents. `weight`/`valence` stay
+        // finite-only: their outputSchema is plain `z.number()`.
+        nodesRaw.every(
+          (n) =>
+            typeof n?.concept === "string" &&
+            typeof n?.degree === "number" &&
+            Number.isSafeInteger(n.degree),
+        ) &&
+        edgesRaw.every(
+          (e) =>
+            typeof e?.source === "string" &&
+            typeof e?.target === "string" &&
+            typeof e?.weight === "number" &&
+            Number.isFinite(e.weight) &&
+            typeof e?.valence === "number" &&
+            Number.isFinite(e.valence) &&
+            typeof e?.count === "number" &&
+            Number.isSafeInteger(e.count) &&
+            typeof e?.updated_at === "string",
+        );
+      if (!shapeOk) {
+        return unreadableAnswerReply(
+          "The graph result",
+          "a set of association edges",
+          "these concepts have no associations",
+        );
+      }
+      const nodes = nodesRaw as { concept: string; degree: number }[];
+      const edges = edgesRaw as {
+        source: string;
+        target: string;
+        weight: number;
+        valence: number;
+        count: number;
+        updated_at: string;
+      }[];
+      const truncated = truncatedRaw;
+      const minWeightApplied = minWeightAppliedRaw;
+
+      const hops = depth ?? 1;
+      // Computed BEFORE the empty-edges branch and shared with the non-empty
+      // one below (Copilot review, round 2): the early return used to skip
+      // both notes entirely, so a truncated, all-below-floor answer (0 edges
+      // survived the cut) told a text-only reader only "no association edges
+      // found" — indistinguishable from a genuinely quiet concept.
+      const truncatedNote = truncated
+        ? "\n\n(truncated — the store may hold more edges than this call " +
+          "reached; core does not promise these are sorted by weight before " +
+          "the cut, so a higher min_weight, not a lower limit, is what " +
+          "reliably narrows to the strongest ones)"
+        : "";
+      const floorAttribution =
+        min_weight === undefined
+          ? "the engine's own floor at this depth"
+          : "the min_weight you passed";
+      const floorNote =
+        minWeightApplied > 0
+          ? `\n\n(edges below weight ${minWeightApplied} were excluded — ${floorAttribution})`
+          : "";
+      if (edges.length === 0) {
+        return structured(
+          `No association edges found for ${seeds.length === 1 ? "this seed" : "these seeds"} ` +
+            `within ${hops} hop${hops === 1 ? "" : "s"}` +
+            (minWeightApplied > 0
+              ? ` at or above weight ${minWeightApplied}`
+              : "") +
+            `.` +
+            truncatedNote +
+            floorNote,
+          { nodes, edges, truncated, min_weight_applied: minWeightApplied },
+        );
+      }
+
+      // Sorted by weight, strongest first (the brief for this tool, and the
+      // one ranking a reader can act on — core does not promise the wire
+      // order is anything in particular). structuredContent.edges (below)
+      // deliberately keeps the SERVER's order — only this rendered `lines`
+      // array is reordered (llms.txt says so explicitly, Copilot round 2).
+      const sorted = [...edges].sort((a, b) => b.weight - a.weight);
+      // `-0.00` guard, same fix memory_feedback's avg_valence carries
+      // (CodeRabbit on #146): valence can be negative and round to zero.
+      const fmtSigned = (n: number): string =>
+        n.toFixed(2).replace(/^-0\.00$/, "0.00");
+      // Concept names are NOT this client's own text (CN-032): in a shared
+      // room they are whatever concept another member's memory_write
+      // supplied, so a newline or instruction-shaped string in `source`/
+      // `target` must not be interpolated raw into text a DIFFERENT
+      // principal's model then reads (Copilot review, round 1). Printed as
+      // an exact JSON literal (src/names.ts), the same treatment `@domain`
+      // and `[by "name"]` already get — not `safeInline`, which maps every
+      // non-ASCII `\w`-excluded character to a space and would silently
+      // erase a Cyrillic/CJK concept name the way it once erased author
+      // names (issue #66). `structuredContent` still carries the raw value
+      // (below): only the rendered TEXT needs the escape treatment.
+      const nameLiteral = (s: string): string =>
+        exactLiteral(s, MAX_DOMAIN_LITERAL)?.literal ??
+        "(name cannot be printed exactly)";
+      const lines = sorted.map(
+        (e, i) =>
+          `${i + 1}. ${nameLiteral(e.source)} — ${nameLiteral(e.target)} ` +
+          `(weight: ${e.weight.toFixed(2)}, valence: ${fmtSigned(e.valence)}, ` +
+          `count: ${e.count})${formatDateTag(e.updated_at)}`,
+      );
+      const header =
+        `${edges.length} association edge${edges.length === 1 ? "" : "s"} found` +
+        (minWeightApplied > 0 ? ` (weight ≥ ${minWeightApplied})` : "") +
+        ":";
+      // The two status notes go BEFORE the edge lines, not after them: the
+      // cap truncates from the end, so a page long enough to be cut would
+      // otherwise lose exactly the lines that say it is incomplete and what
+      // floor applied (CodeRabbit on #174, after the 0.12.1 merge). Legend
+      // appended AFTER capResult, like memory_read's, for the same reason.
+      const notes = truncatedNote + floorNote;
+      const preface = notes ? header + notes + "\n" : header;
+      const text = withDomainEscapeLegend(
+        capResult(
+          [preface, ...lines].join("\n"),
+          "Lower `limit` or raise `min_weight` to see fewer edges.",
+        ),
+        ...edges.flatMap((e) => [e.source, e.target]),
+      );
+
+      // structuredContent carries the validated nodes/edges EXACTLY, uncapped
+      // and unescaped (OD-11, the same rule memory_read's items get): a
+      // client reading structured data reads these as the graph, not as a
+      // rendering of it.
+      return structured(text, {
+        nodes,
+        edges,
+        truncated,
+        min_weight_applied: minWeightApplied,
+      });
     },
   );
 }
