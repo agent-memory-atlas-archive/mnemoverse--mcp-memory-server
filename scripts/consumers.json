@@ -1,0 +1,41 @@
+{
+  "$comment": "Our own public endpoints that serve this package's version, for the release wave. release.yml opens a 'Wave vX.Y.Z' issue with one checklist line per entry; scripts/check-release-sync.mjs probes every entry daily and ticks the line. This repository is public, so the list holds only endpoints anyone can already see; every other surface of the release is tracked privately and is never named here (test/wave.test.ts enforces it). `kind`: auto or track (a probe proves it; manual is supported by the code but not used here). `fix` may use <version>.",
+  "consumers": [
+    {
+      "id": "docs",
+      "name": "docs site (llms-full.txt)",
+      "kind": "track",
+      "repo": "mnemoverse/mnemoverse-docs",
+      "probe": {
+        "type": "text-regex",
+        "url": "https://mnemoverse.com/docs/llms-full.txt",
+        "regex": "Current release: \\*\\*v([^*]+)\\*\\*"
+      },
+      "fix": "merge the bump PR that mcp-version-watch.yml (in mnemoverse-docs) opens from branch bot/mcp-version-<version>, or, if the bot could not open it, open one by hand from that branch."
+    },
+    {
+      "id": "marketing-card",
+      "name": "marketing site (server-card.json → the connector card)",
+      "kind": "track",
+      "repo": "mnemoverse/mnemoverse-marketing",
+      "probe": {
+        "type": "json-field",
+        "url": "https://mnemoverse.com/.well-known/mcp/server-card.json",
+        "field": "package.version"
+      },
+      "fix": "the marketing card redirects to the connector's live card (mnemoverse-marketing card-redirect PR); it serves <version> once the connector serves it: see the connector line. Before that redirect is deployed: merge a \"chore(mcp): version stamps\" PR in mnemoverse-marketing."
+    },
+    {
+      "id": "connector",
+      "name": "hosted connector (/health package.version)",
+      "kind": "track",
+      "repo": "mnemoverse/mnemoverse-mcp-remote",
+      "probe": {
+        "type": "json-field",
+        "url": "https://mcp.mnemoverse.com/health",
+        "field": "package.version"
+      },
+      "fix": "merge the pin bump in mnemoverse-mcp-remote (the Dependabot PR or the receiver's PR) and let Railway deploy it; the package field appears once step 4 PR 4 (observability) is deployed."
+    }
+  ]
+}

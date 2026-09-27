@@ -604,6 +604,68 @@ jobs:
   # The issue text lives in `env` as a block scalar, not inside the script, so
   # the markdown can carry real backticks with no escaping.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Step 13: the wave tracker.
+  # One issue per release, "Wave vX.Y.Z", with a checklist line per consumer of
+  # the MCP surface (scripts/consumers.json). The daily release-sync check ticks
+  # the probed lines from live probes and closes the wave when every line is
+  # green; a person ticks the manual lines. GITHUB_TOKEN can open issues here,
+  # so no extra secret; a failure of this job never fails the release.
+  # ---------------------------------------------------------------------------
+  open-wave-tracker:
+    name: Open the wave tracker issue for this release
+    needs: [release]
+    # Two runs for the same tag (a re-run, a manual dispatch) must not both see
+    # "no wave yet" and create two issues: one open-wave job per tag at a time,
+    # and the second one then finds the first one's issue and comments.
+    concurrency:
+      group: open-wave-${{ github.event.inputs.tag || github.ref_name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # The scripts this job runs come from the default branch, whose code
+      # passed its required checks. This pins the scripts, not the workflow
+      # file: a run from another ref executes that ref's YAML. It is not a
+      # boundary against an attacker, because dispatching a workflow or pushing
+      # a tag already needs write access to this repository, and write access
+      # can use this token from any branch; it keeps an unreviewed script on a
+      # branch from writing to the wave by accident (Copilot on #178).
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Open (or bump) the Wave issue with the consumer checklist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/wave-issue.mjs open --version "${TAG#v}" --run-url "$RUN_URL"
+      # A tracker failure must reach a human (Sigma on #178). The workflow's
+      # notify-on-failure job watches only the release or the check, and its
+      # text says the release failed, so the tracker reports itself: one open
+      # issue from github-actions[bot] with this exact title, commented on
+      # again by every later failure instead of duplicated.
+      - name: A tracker failure must reach a human
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Wave tracker failed"
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --author app/github-actions --limit 100 --json number,title --jq "map(select(.title == \"$title\"))[0].number // empty")
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The wave tracker job ($GITHUB_JOB) failed: $RUN_URL. Read the failing step. The release itself is not affected, but the wave issue for this release may not have been opened. Read the failing step, then re-run this job, or open the wave by hand with node scripts/wave-issue.mjs open --version <X.Y.Z>. Close this issue by hand once the wave exists."
+          fi
+
   notify-on-failure:
     name: A failed release must reach a human
     needs: [release]
