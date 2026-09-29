@@ -326,6 +326,7 @@ describe("withdrawn claims stay withdrawn on every advertised surface", () => {
     const SAMPLE: Record<string, Record<string, string>> = {
       recall: { topic: "x" },
       save_insight: { insight: "x", domain: "d" },
+      setup_memory: {},
       what_do_you_know: { subject: "x" },
     };
     const { prompts } = await mcp.client.listPrompts();
@@ -352,3 +353,106 @@ describe("withdrawn claims stay withdrawn on every advertised surface", () => {
     }
   });
 });
+
+/**
+ * No push on any advertised surface (2026-09-29).
+ *
+ * The Claude connector directory's criteria: "Describe what the tool does, and
+ * don't tell Claude how to behave." Its submission form asks the publisher to
+ * confirm: "Tool descriptions contain no instructions about model behavior,
+ * other tools, or external instruction sources". OpenAI's plugin guidelines
+ * say the same of "overly broad triggering". Saying WHEN a tool applies is
+ * allowed and kept ("It applies when an answer may depend on..."); pushing the
+ * model to call it is not. Proactivity moved to rules the user adds to their
+ * own agent (the setup_memory prompt), so these words have no place on a
+ * surface the server itself advertises. The same lists read the prompts,
+ * including the rules setup_memory renders: those are written without them.
+ */
+describe("no proactivity push on any advertised surface", () => {
+  const PUSHES: Array<[RegExp, string]> = [
+    [/proactiv/i, "a 'proactively' push"],
+    [/\bALWAYS\b/, "an ALWAYS push"],
+    [/don.t wait/i, "a 'don't wait to be asked' push"],
+    [/as a habit/i, "a habit push"],
+    [/\byou own this\b/i, "the ownership framing"],
+    [/\bcall [a-z_]+ next\b/i, "an instruction to call another tool next"],
+  ];
+
+  it("no tool or parameter description carries one", () => {
+    for (const t of tools) {
+      const surfaces: Array<[string, string]> = [[`${t.name} description`, t.description ?? ""]];
+      const props = (t.inputSchema?.properties ?? {}) as Record<string, { description?: unknown } | undefined>;
+      for (const [p, v] of Object.entries(props)) {
+        if (typeof v?.description === "string") surfaces.push([`${t.name}.${p}`, v.description]);
+      }
+      for (const [label, text] of surfaces) {
+        for (const [banned, why] of PUSHES) {
+          expect(text, `${label} carries ${why} (${banned})`).not.toMatch(banned);
+        }
+      }
+    }
+  });
+
+  it("the server instructions carry none, on the wire and at the source", () => {
+    for (const [banned, why] of PUSHES) {
+      expect(mcp.client.getInstructions() ?? "", `the wire instructions carry ${why}`).not.toMatch(banned);
+      expect(SERVER_INSTRUCTIONS, `SERVER_INSTRUCTIONS carries ${why}`).not.toMatch(banned);
+    }
+  });
+
+  it("no prompt carries one, in its description, arguments or message", async () => {
+    const { prompts } = await mcp.client.listPrompts();
+    for (const p of prompts) {
+      const args = Object.fromEntries((p.arguments ?? []).filter((a) => a.required).map((a) => [a.name, "x"]));
+      const rendered = await mcp.client.getPrompt({ name: p.name, arguments: args });
+      const surfaces = [
+        p.description ?? "",
+        ...(p.arguments ?? []).map((a) => a.description ?? ""),
+        ...rendered.messages.map((m) => (m.content as { text?: string }).text ?? ""),
+      ];
+      for (const text of surfaces) {
+        for (const [banned, why] of PUSHES) {
+          expect(text, `prompt ${p.name} carries ${why} (${banned})`).not.toMatch(banned);
+        }
+      }
+    }
+  });
+
+  it("the list fires on the text it replaced (control)", () => {
+    const old =
+      "You own this long-term memory. Use it as a habit: memory_write the moment you learn a durable fact — don't wait to be asked. ALWAYS check here first. Call this PROACTIVELY. To bring someone in, call memory_invite_to_room next.";
+    for (const [banned, why] of PUSHES) {
+      expect(old, `control misses ${why}`).toMatch(banned);
+    }
+  });
+});
+
+/**
+ * The measured "when" (2026-09-29). With the pushes removed, the plain
+ * "It fits right after acting on recalled memories" cut ratings in Claude Code
+ * from 17/30 to 6/30; naming the moment and the ids brought them to 22/30
+ * (pre-registered measurement, mnemoverse-workspace
+ * channels/2026-09-29-claude-chatgpt/eval-neutral-wording-plan.md). These
+ * sentences say when the tool applies, which the directory asks for; losing
+ * them loses the rating signal, so they are pinned.
+ */
+describe("the measured 'when' sentences stay", () => {
+  // "or rejected" (CodeRabbit on #190): a memory the answer set aside as
+  // wrong or stale is exactly the one a -1 is for.
+  it("memory_feedback names the moment and the ids, rejected memories included", () => {
+    expect(description("memory_feedback")).toContain(
+      "Use it after an answer that relied on or rejected memories from memory_read: pass the ids of those memories as memory_ids",
+    );
+  });
+
+  it("memory_read ties its ids to memory_feedback after the answer", () => {
+    expect(description("memory_read")).toContain(
+      "after the answer, memory_feedback takes these ids to record which memories helped",
+    );
+  });
+
+  it("the instructions say what a rating records", () => {
+    expect(SERVER_INSTRUCTIONS).toContain("memory_feedback records which recalled memories helped an answer");
+  });
+});
+
