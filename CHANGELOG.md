@@ -94,6 +94,15 @@ git history and the GitHub releases are the record.
   now holds the npm line to the canonical sentence and fails on a ranking
   mechanism named in the prose of any listing surface.
 
+### Security
+
+- **vitest range raised to `^4.1.11`.** The range was `^4.1.9`, which still
+  admitted 4.1.9 and 4.1.10, inside GHSA-82fw-gwwq-j7x9 (CVE-2026-84373,
+  `>= 2.1.0, < 4.1.11`). The lockfile already resolved 4.1.11, so installs
+  do not change; a scanner that reads the declared range has no vulnerable
+  version left to match. vitest is a dev dependency and does not ship in
+  the package.
+
 ## [0.15.1] — 2026-10-12
 
 ### Security
