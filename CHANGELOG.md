@@ -83,16 +83,19 @@ git history and the GitHub releases are the record.
   helpful or misleading re-ranks what comes back next"), the OAuth sign-in or
   API key, and the free plan. The README opens with the two calls, the
   per-user `domain`, the free plan's numbers from mnemoverse.com/pricing, the
-  two ways to connect and a link to the steps for other hosts. The
-  Rescorla-Wagner sentence and the HDBSCAN paragraph are removed, two more
-  paraphrases of the ranking now use the canonical sentence, and the
-  comparison no longer says that nothing in `CLAUDE.md` follows you to the
-  next window: a committed file travels with its repository, and what it
-  cannot do is reach a tool that does not read it. Four keywords are added
-  (`memory-layer`, `ai-memory`, `llm-memory`, `feedback`). The registry line
-  in `src/configs/source.json` is unchanged. `test/listing-text.test.ts`
-  now holds the npm line to the canonical sentence and fails on a ranking
-  mechanism named in the prose of any listing surface.
+  two ways to connect and a link to the steps for other hosts. The two
+  passages that named the engine's internals (the ranking update rule and a
+  consolidation stage that is switched off on the hosted service) are
+  removed, three more paraphrases of the ranking now use the canonical
+  sentence, and the comparison no longer says that nothing in `CLAUDE.md`
+  follows you to the next window: a committed file travels with its
+  repository, and what it cannot do is reach a tool that does not read it.
+  Four keywords are added (`memory-layer`, `ai-memory`, `llm-memory`,
+  `feedback`). The registry line in `src/configs/source.json` is unchanged.
+  `test/listing-text.test.ts` now holds the npm line to the canonical
+  sentence and fails on a ranking mechanism named in the prose of any
+  listing surface, or of the newest `CHANGELOG.md` section, which the
+  release workflow publishes as the GitHub release body.
 
 ### Security
 

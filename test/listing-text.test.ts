@@ -76,8 +76,19 @@ describe("listing text directories copy", () => {
     // P-37: the ranking mechanics stay out of public prose. Field names an
     // API returns (avg_valence, hebbian_edges, co-activation count) are
     // contract and are written in code spans, which this check skips.
+    // The newest CHANGELOG section is checked too: release.yml extracts it
+    // with awk and publishes it as the GitHub release body (body_path), so a
+    // name kept out of the README would otherwise reach the release page.
+    // Older sections are already published and stay as they were.
     const MECHANICS = /\bhebbian\b|rescorla|prediction[- ]error|\bhdbscan\b|von restorff/i;
-    for (const [label, text] of LISTING) {
+    const changelog = read("CHANGELOG.md");
+    const newest = changelog.split(/^## \[/m)[1] ?? "";
+    expect(newest, "CHANGELOG.md has no section").not.toBe("");
+    const surfaces: Array<[string, string]> = [
+      ...LISTING,
+      ["CHANGELOG.md newest section (GitHub release body)", newest],
+    ];
+    for (const [label, text] of surfaces) {
       const prose = text.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
       for (const s of sentences(prose)) {
         if (MECHANICS.test(s)) {
