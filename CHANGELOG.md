@@ -94,8 +94,8 @@ git history and the GitHub releases are the record.
   `feedback`). The registry line in `src/configs/source.json` is unchanged.
   `test/listing-text.test.ts` now holds the npm line to the canonical
   sentence and fails on a ranking mechanism named in the prose of any
-  listing surface, or of the newest `CHANGELOG.md` section, which the
-  release workflow publishes as the GitHub release body.
+  listing surface, or of the newest `CHANGELOG.md` section that has
+  entries, which becomes the GitHub release body.
 
 ### Security
 

@@ -76,14 +76,22 @@ describe("listing text directories copy", () => {
     // P-37: the ranking mechanics stay out of public prose. Field names an
     // API returns (avg_valence, hebbian_edges, co-activation count) are
     // contract and are written in code spans, which this check skips.
-    // The newest CHANGELOG section is checked too: release.yml extracts it
-    // with awk and publishes it as the GitHub release body (body_path), so a
-    // name kept out of the README would otherwise reach the release page.
+    // The newest CHANGELOG section with entries is checked too: release.yml
+    // extracts the "## [$VERSION]" section with awk and publishes it as the
+    // GitHub release body (body_path), so a name kept out of the README would
+    // otherwise reach the release page. Between releases that text sits under
+    // [Unreleased]; on a release commit it moves to the dated section.
     // Older sections are already published and stay as they were.
     const MECHANICS = /\bhebbian\b|rescorla|prediction[- ]error|\bhdbscan\b|von restorff/i;
     const changelog = read("CHANGELOG.md");
-    const newest = changelog.split(/^## \[/m)[1] ?? "";
-    expect(newest, "CHANGELOG.md has no section").not.toBe("");
+    // Release commits keep an empty "## [Unreleased]" above "## [x.y.z]"
+    // (0.15.1, f8d5a3f), so check the newest section that has a body.
+    const newest =
+      changelog
+        .split(/^## \[/m)
+        .slice(1)
+        .find((sec) => sec.replace(/^[^\n]*\n/, "").trim() !== "") ?? "";
+    expect(newest, "CHANGELOG.md has no section with entries").not.toBe("");
     const surfaces: Array<[string, string]> = [
       ...LISTING,
       ["CHANGELOG.md newest section (GitHub release body)", newest],
