@@ -3,7 +3,7 @@
   "name": "mnemoverse",
   "displayName": "Mnemoverse Memory",
   "title": "Mnemoverse Memory",
-  "description": "Hosted AI agent memory that learns from outcomes, with shared rooms, in Claude, Cursor and ChatGPT.",
+  "description": "Hosted agent memory that learns from outcomes, with shared rooms. No key: mcp.mnemoverse.com/mcp",
   "websiteUrl": "https://mnemoverse.com",
   "type": "stdio",
   "command": "npx",
@@ -55,6 +55,7 @@
   "mcpb": {
     "$comment": "Fields specific to the Claude Desktop Extension (MCPB) manifest.json. version + identity fields are derived from package.json + the source above; tools[] is derived from tools.json (generated from the built server); only MCPB-specific extras live here.",
     "name": "mnemoverse-memory",
+    "description": "Hosted AI agent memory that learns from outcomes, with shared rooms, in Claude, Cursor and ChatGPT.",
     "author": {
       "name": "Mnemoverse",
       "url": "https://github.com/mnemoverse"

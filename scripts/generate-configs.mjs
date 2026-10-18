@@ -820,7 +820,9 @@ function genMcpbManifest() {
     name: m.name,
     display_name: source.displayName,
     version: PACKAGE_VERSION,
-    description: source.description,
+    // The registry line names the hosted URL as the no-key path; this bundle
+    // is the local server and asks for a key, so it keeps its own line.
+    description: m.description ?? source.description,
     long_description: m.longDescription,
     // The MCPB directory submission requires `author` to point at a GitHub
     // profile — so this comes from source.mcpb.author (a github.com URL), not

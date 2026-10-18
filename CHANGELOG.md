@@ -86,6 +86,13 @@ git history and the GitHub releases are the record.
   the hosted server at `https://mcp.mnemoverse.com/mcp` signs in with OAuth
   and takes no key. It is the line a registry consumer reads next to the npx
   package, and the prompt text VS Code shows for the key input.
+- **The registry line names the no-key path.** It read "Hosted AI agent
+  memory that learns from outcomes, with shared rooms, in Claude, Cursor and
+  ChatGPT." and now reads "Hosted agent memory that learns from outcomes,
+  with shared rooms. No key: mcp.mnemoverse.com/mcp" (96 of 100 characters).
+  It is the field directories copy as the listing's summary. The Claude
+  Desktop bundle runs the local server and asks for a key, so `manifest.json`
+  keeps the old line through a new `mcpb.description` in `source.json`.
 
 ## [0.15.2] — 2026-10-18
 
