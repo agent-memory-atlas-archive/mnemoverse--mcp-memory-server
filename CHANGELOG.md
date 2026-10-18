@@ -75,6 +75,36 @@ git history and the GitHub releases are the record.
   PR. `test/install-links.test.ts` decodes every install link in the README
   and fails on one that installs anything but the hosted server or carries
   a key.
+- **The npm line and the README's first screen say what the server does, and
+  the ranking mechanics are gone from the prose.** The `package.json`
+  description (the line npm search shows) no longer says "learns from
+  outcomes" or "feedback re-ranks recall": it names write and read, the four
+  main hosts, the canonical feedback sentence ("rating a recalled memory as
+  helpful or misleading re-ranks what comes back next"), the OAuth sign-in or
+  API key, and the free plan. The README opens with the two calls, the
+  per-user `domain`, the free plan's numbers from mnemoverse.com/pricing, the
+  two ways to connect and a link to the steps for other hosts. The two
+  passages that named the engine's internals (the ranking update rule and a
+  consolidation stage that is switched off on the hosted service) are
+  removed, three more paraphrases of the ranking now use the canonical
+  sentence, and the comparison no longer says that nothing in `CLAUDE.md`
+  follows you to the next window: a committed file travels with its
+  repository, and what it cannot do is reach a tool that does not read it.
+  Four keywords are added (`memory-layer`, `ai-memory`, `llm-memory`,
+  `feedback`). The registry line in `src/configs/source.json` is unchanged.
+  `test/listing-text.test.ts` now holds the npm line to the canonical
+  sentence and fails on a ranking mechanism named in the prose of any
+  listing surface, or of the newest `CHANGELOG.md` section that has
+  entries, which becomes the GitHub release body.
+
+### Security
+
+- **vitest range raised to `^4.1.11`.** The range was `^4.1.9`, which still
+  admitted 4.1.9 and 4.1.10, inside GHSA-82fw-gwwq-j7x9 (CVE-2026-84373,
+  `>= 2.1.0, < 4.1.11`). The lockfile already resolved 4.1.11, so installs
+  do not change; a scanner that reads the declared range has no vulnerable
+  version left to match. vitest is a dev dependency and does not ship in
+  the package.
 
 ## [0.15.1] — 2026-10-12
 
