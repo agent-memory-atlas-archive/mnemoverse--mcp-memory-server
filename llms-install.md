@@ -4,7 +4,7 @@ This file is for an AI agent such as Cline that installs `@mnemoverse/mcp-memory
 
 ## First: the hosted server needs no key
 
-If the client can add a remote MCP server by URL and run its browser sign-in, connect the hosted server and skip the rest of this file: there is no key to ask for and nothing to install. The URL is `https://mcp.mnemoverse.com/mcp` (streamable HTTP, OAuth sign-in), and it serves the same tools as this package.
+If the client can add a remote MCP server by URL and run its browser sign-in, follow the hosted setup in this section, then skip the local-package sections after it: there is no key to ask for and nothing to install. The URL is `https://mcp.mnemoverse.com/mcp` (streamable HTTP, OAuth sign-in), and it serves the same tools as this package.
 
 In Claude Code, run:
 

@@ -80,7 +80,7 @@ In the JSON, `reason` sits inside the `details` object (`details.reason`), next 
 
 ### 2. Connect to your AI tool
 
-The two canonical setups, Claude Code and Cursor. Each starts with the hosted server: a browser sign-in and no key. Every setup that takes a key writes it **once, at user scope, covering every project**. Avoid a per-project config file for a key: it lives inside the repository and can be committed with it, and a key belongs outside:
+The two canonical setups, Claude Code and Cursor. Each starts with the hosted server: a browser sign-in and no key. Their key-based setups write the key **once, at user scope, covering every project**; each client further down says where its own config lives. Avoid a per-project config file for a key: it lives inside the repository and can be committed with it, and a key belongs outside:
 
 <!-- INSTALL_SNIPPETS_START — generated from src/configs/source.json. Run `npm run generate:configs` to refresh. Do not edit by hand. -->
 
