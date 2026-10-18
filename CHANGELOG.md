@@ -56,6 +56,37 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Claude Code starts with the hosted server, as Cursor already did.** Asked
+  to "set up Mnemoverse memory", an agent in Claude Code (rehearsal,
+  2026-10-18) took the npx command with `MNEMOVERSE_API_KEY`, from the README's
+  Claude Code block and the directory listings copied from it, and found the
+  hosted server only after the user said there was no Node.js and no key. The
+  README's Claude Code block now leads with
+  `claude mcp add --scope user --transport http mnemoverse https://mcp.mnemoverse.com/mcp`
+  and keeps the local command below it as the API-key path. Both the block and
+  the Quick Start say that a session open when the command ran does not load
+  the server until Claude Code starts again. The block is generated from a new
+  partial, `docs/snippets/claude-code-hosted.md`; `docs/snippets/claude-code.md`,
+  which mnemoverse.com/docs mirrors, is unchanged.
+- **`llms-install.md` and `llms.txt` name the hosted server first.** The agent
+  install guide said the user needs Node.js and an API key; both are needed
+  only for the local package, and the guide now sends a client that can add a
+  remote server and sign in to `https://mcp.mnemoverse.com/mcp` before its
+  local steps.
+
+### Changed
+
+- **`server.json` publishes the key's example as `placeholder`, not `default`.**
+  The registry schema keeps `default` for a value that works and sends
+  examples to `placeholder`; `mk_live_xxx…` was published as the default of
+  `MNEMOVERSE_API_KEY`. `MNEMOVERSE_API_URL` keeps its real default.
+- **The key's description says it is for the local package only**, and that
+  the hosted server at `https://mcp.mnemoverse.com/mcp` signs in with OAuth
+  and takes no key. It is the line a registry consumer reads next to the npx
+  package, and the prompt text VS Code shows for the key input.
+
 ## [0.15.2] — 2026-10-18
 
 ### Documentation

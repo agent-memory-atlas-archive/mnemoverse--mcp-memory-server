@@ -37,9 +37,9 @@ If your client signs in over OAuth, you do not need a key at all. Create a free 
 
 Claude Code:
 ```bash
-claude mcp add -s user --transport http mnemoverse https://mcp.mnemoverse.com/mcp
+claude mcp add --scope user --transport http mnemoverse https://mcp.mnemoverse.com/mcp
 ```
-Then run `/mcp` in a session, select `mnemoverse` and choose **Authenticate**.
+Then start Claude Code, run `/mcp`, select `mnemoverse` and choose **Authenticate**. A session that was already running when the command ran does not load the new server: exit and start `claude` again first.
 
 Cursor, in `.cursor/mcp.json`:
 ```json
@@ -80,11 +80,19 @@ In the JSON, `reason` sits inside the `details` object (`details.reason`), next 
 
 ### 2. Connect to your AI tool
 
-The two canonical setups, Claude Code and Cursor. Cursor's button adds the hosted server with a browser sign-in and no key; every setup that takes a key writes it **once, at user scope, covering every project**. Avoid a per-project config file for a key: it lives inside the repository and can be committed with it, and a key belongs outside:
+The two canonical setups, Claude Code and Cursor. Each starts with the hosted server: a browser sign-in and no key. Every setup that takes a key writes it **once, at user scope, covering every project**. Avoid a per-project config file for a key: it lives inside the repository and can be committed with it, and a key belongs outside:
 
 <!-- INSTALL_SNIPPETS_START — generated from src/configs/source.json. Run `npm run generate:configs` to refresh. Do not edit by hand. -->
 
-**Claude Code** — add via CLI:
+**Claude Code** — the hosted server, with a browser sign-in. No API key, nothing to install:
+
+```bash
+claude mcp add --scope user --transport http mnemoverse https://mcp.mnemoverse.com/mcp
+```
+
+Then start Claude Code, run `/mcp`, select `mnemoverse` and choose **Authenticate**. If the command ran inside a Claude Code session (yours, or Claude ran it for you), that session does not load the new server: exit and start `claude` again first.
+
+To run the local server with an API key instead (Node.js 18 or later), put your own key in place of `mk_live_YOUR_KEY`. Use one or the other, not both: they share the name `mnemoverse`.
 
 ```bash
 claude mcp add mnemoverse -s user \
@@ -141,7 +149,7 @@ To run the local server with an API key instead, add the JSON below to `~/.curso
     {
       "type": "promptString",
       "id": "mnemoverse-api-key",
-      "description": "Mnemoverse API key (starts with mk_live_). Optional to install and inspect — the server starts and lists its tools without a key; every actual tool call requires one. Get one free in ~30s at https://console.mnemoverse.com",
+      "description": "Mnemoverse API key (starts with mk_live_), for this local package only: the hosted server https://mcp.mnemoverse.com/mcp signs in with OAuth and takes no key. Optional to install and inspect — the server starts and lists its tools without a key; every actual tool call requires one. Get one free in ~30s at https://console.mnemoverse.com",
       "password": true
     }
   ],
