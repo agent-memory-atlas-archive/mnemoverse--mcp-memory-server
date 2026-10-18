@@ -56,6 +56,8 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
+## [0.15.2] — 2026-10-18
+
 ### Documentation
 
 - **The README's "Add to Cursor" button adds the hosted server with a browser
