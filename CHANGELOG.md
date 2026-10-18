@@ -56,6 +56,8 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
+## [0.15.3] — 2026-10-18
+
 ### Documentation
 
 - **Claude Code starts with the hosted server, as Cursor already did.** Asked
