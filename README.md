@@ -95,7 +95,7 @@ Then start Claude Code, run `/mcp`, select `mnemoverse` and choose **Authenticat
 To run the local server with an API key instead (Node.js 18 or later), put your own key in place of `mk_live_YOUR_KEY`. Use one or the other, not both: they share the name `mnemoverse`.
 
 ```bash
-claude mcp add mnemoverse -s user \
+claude mcp add mnemoverse --scope user \
   -e MNEMOVERSE_API_KEY=mk_live_YOUR_KEY \
   -e MNEMOVERSE_API_URL=https://core.mnemoverse.com/api/v1 \
   -- npx -y @mnemoverse/mcp-memory-server@latest
@@ -104,7 +104,7 @@ claude mcp add mnemoverse -s user \
 On Windows (PowerShell), paste the same command as one line — PowerShell does not read the `\` line continuations:
 
 ```powershell
-claude mcp add mnemoverse -s user -e MNEMOVERSE_API_KEY=mk_live_YOUR_KEY -e MNEMOVERSE_API_URL=https://core.mnemoverse.com/api/v1 -- npx -y @mnemoverse/mcp-memory-server@latest
+claude mcp add mnemoverse --scope user -e MNEMOVERSE_API_KEY=mk_live_YOUR_KEY -e MNEMOVERSE_API_URL=https://core.mnemoverse.com/api/v1 -- npx -y @mnemoverse/mcp-memory-server@latest
 ```
 
 **Cursor** — click to add the hosted server. Cursor signs you in through the browser, so there is no key to paste:
