@@ -334,7 +334,7 @@ function genVscodeDeepLink() {
  *
  * Format: claude mcp add --scope user --transport http NAME URL
  *
- * `--scope user` is LOAD-BEARING for the same reason as `-s user` in
+ * `--scope user` is LOAD-BEARING for the same reason as in
  * genClaudeCodeCli() below: without it the server lands in local scope, for
  * the current directory only. In the 2026-10-18 rehearsal an agent asked to
  * set up the memory first added it without the flag.
@@ -346,37 +346,43 @@ function genClaudeCodeHostedCli() {
 /**
  * Claude Code CLI command, local server with an API key.
  *
- * Format: claude mcp add NAME -s user -e KEY=VAL ... -- command args...
+ * Format: claude mcp add NAME --scope user -e KEY=VAL ... -- command args...
  *
- * `-s user` is LOAD-BEARING: the CLI's default scope is `local`, which
+ * `--scope user` is LOAD-BEARING: the CLI's default scope is `local`, which
  * registers the server for the current project directory only — memory
  * installed in one repo is silently absent in the next, the opposite of
  * cross-tool memory. The user scope registers it once for every project.
  * (History of how this shipped without the flag: git log on this function.)
+ *
+ * The long form, not `-s user`: the same flag (`claude mcp add --help` in
+ * Claude Code 2.1.302 lists `-s, --scope <scope>`), but the hosted command
+ * above and every hand-written page on mnemoverse.com/docs (docs#756,
+ * 2026-10-21) spell it `--scope user`, and a reader comparing two commands
+ * should not have to know that the two spellings are one flag.
  */
 function genClaudeCodeCli() {
   const envFlags = Object.entries(ENV_VALUES)
     .map(([k, v]) => `  -e ${k}=${v}`)
     .join(" \\\n");
-  return `claude mcp add ${source.name} -s user \\\n${envFlags} \\\n  -- ${source.command} ${source.args.join(" ")}\n`;
+  return `claude mcp add ${source.name} --scope user \\\n${envFlags} \\\n  -- ${source.command} ${source.args.join(" ")}\n`;
 }
 
 /**
  * Claude Code CLI command — single-line PowerShell variant.
  *
- * Format: claude mcp add NAME -s user -e KEY=VAL ... -- command args... (one line, no `\` continuations)
+ * Format: claude mcp add NAME --scope user -e KEY=VAL ... -- command args... (one line, no `\` continuations)
  *
  * Same command as genClaudeCodeCli(), reflowed onto one line: PowerShell
  * (the default shell on Windows) does not read the bash-style `\` line
  * continuations, so a Windows user pasting the multiline block gets a
- * parse error instead of the intended command. `-s user` remains
+ * parse error instead of the intended command. `--scope user` remains
  * LOAD-BEARING here for the same reason as in genClaudeCodeCli() above.
  */
 function genClaudeCodeCliOneLine() {
   const envFlags = Object.entries(ENV_VALUES)
     .map(([k, v]) => `-e ${k}=${v}`)
     .join(" ");
-  return `claude mcp add ${source.name} -s user ${envFlags} -- ${source.command} ${source.args.join(" ")}\n`;
+  return `claude mcp add ${source.name} --scope user ${envFlags} -- ${source.command} ${source.args.join(" ")}\n`;
 }
 
 // NOTE: genSmitheryYaml() was removed on 2026-04-12 after an empirical

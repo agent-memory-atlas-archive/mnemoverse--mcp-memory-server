@@ -56,6 +56,16 @@ git history and the GitHub releases are the record.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The local Claude Code command spells the scope flag `--scope user`**, as
+  the hosted command above it already did. It read `-s user`, the same flag
+  (`claude mcp add --help` in Claude Code 2.1.302 lists `-s, --scope <scope>`),
+  so nothing about what it installs changes. The change is in
+  `scripts/generate-configs.mjs`; the README block,
+  `docs/configs/claude-code-cli.sh` and `docs/snippets/claude-code.md`, which
+  mnemoverse.com/docs mirrors, are regenerated from it.
+
 ## [0.15.3] — 2026-10-18
 
 ### Documentation
